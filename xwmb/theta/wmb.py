@@ -53,80 +53,84 @@ def transform_to_theta(ds, grid, theta_l_bins, theta_i_bins):
     return ds_theta
 
 def plot_wmb(wmb, ylim=[-3, 36], rho0=1035.):
-    plt.figure(figsize=(12,5))
+    fig, axes = plt.subplots(1,3,figsize=(12,5))
 
-    plt.subplot(1,3,1)
-    (-wmb.dMdt.mean('time')  / rho0*1e-6 ).plot(y="thetao_i", label=r"$-$d$M/$d$t$, from diff of $h(\Theta)$ snapshots")
-    ((wmb.G_tend).mean('time') / rho0*1e-6 ).plot(y="thetao_i", label=r"$\mathcal{G}_{tend}$ from $\dot{\Theta}$")
-    plt.title("")
-    plt.legend(fontsize=10, loc='upper right')
-    plt.grid(True, alpha=0.15)
-    plt.ylabel("Potential temperature [$\degree$C]")
-    plt.xlabel("Watermass volume tendency [Sv]")
-    plt.ylim(ylim)
+    ax=axes[0]
+    (-wmb.dMdt.mean('time')  / rho0*1e-6 ).plot(ax=ax, y="thetao_i", label=r"$-$d$M/$d$t$, from diff of $h(\Theta)$ snapshots")
+    ((wmb.G_tend).mean('time') / rho0*1e-6 ).plot(ax=ax, y="thetao_i", label=r"$\mathcal{G}_{tend}$ from $\dot{\Theta}$")
+    ax.set_title("")
+    ax.legend(fontsize=10, loc='upper right')
+    ax.grid(True, alpha=0.15)
+    ax.set_ylabel("Potential temperature [$\degree$C]")
+    ax.set_xlabel("Watermass volume tendency [Sv]")
+    ax.set_ylim(ylim)
 
-    plt.subplot(1,3,2)
-    (wmb.psi.mean('time')  / rho0*1e-6 ).plot(y="thetao_i", label="$\Psi(\Theta)$ from $\mathbf{u}(\Theta)$")
-    ((-wmb.G_adv).mean('time') / rho0*1e-6 ).plot(y="thetao_i", label="$-\mathcal{G}_{adv}$ from $\dot{\Theta}$")
-    plt.title("")
-    plt.legend(fontsize=10, loc='upper right')
-    plt.grid(True, alpha=0.15)
-    plt.ylabel("Potential temperature [$\degree$C]")
-    plt.xlabel("Watermass volume tendency [Sv]")
-    plt.ylim(ylim)
+    ax=axes[1]
+    (wmb.psi.mean('time')  / rho0*1e-6 ).plot(ax=ax, y="thetao_i", label="$\Psi(\Theta)$ from $\mathbf{u}(\Theta)$")
+    ((-wmb.G_adv).mean('time') / rho0*1e-6 ).plot(ax=ax, y="thetao_i", label="$-\mathcal{G}_{adv}$ from $\dot{\Theta}$")
+    ax.set_title("")
+    ax.legend(fontsize=10, loc='upper right')
+    ax.grid(True, alpha=0.15)
+    ax.set_ylabel("Potential temperature [$\degree$C]")
+    ax.set_xlabel("Watermass volume tendency [Sv]")
+    ax.set_ylim(ylim)
     
-    plt.subplot(1,3,3)
-    plt.fill_betweenx(
+    ax=axes[2]
+    ax.fill_betweenx(
         wmb.thetao_i,
         wmb.G_NC.mean('time')/rho0*1e-6, (-wmb.dMdt + wmb.psi).mean('time')/rho0*1e-6, where=wmb.N.mean('time')>=0, 
         alpha=0.25, color="r", label=r"$\mathcal{N} = \mathcal{N}_{A} + \mathcal{N}_{D} = -$d$M/$d$t + \Psi - \mathcal{G}_{NC}$"
     )
-    plt.fill_betweenx(
+    ax.fill_betweenx(
         wmb.thetao_i,
         wmb.G_NC.mean('time')/rho0*1e-6, (-wmb.dMdt + wmb.psi).mean('time')/rho0*1e-6, where=wmb.N.mean('time')<0, 
         alpha=0.25, color="b"
     )
-    ((-wmb.dMdt + wmb.psi)/rho0*1e-6).mean('time').plot(y="thetao_i", label=r"$-$d$M/$d$t + \Psi$")
-    ((wmb.G_tend - wmb.G_adv)/rho0*1e-6).mean('time').plot(y="thetao_i", label=r"$\mathcal{G}_{tend} - \mathcal{G}_{adv}$")
-    ((wmb.G_NC) / rho0*1e-6).mean('time').plot(y="thetao_i", label=r"$\mathcal{G}_{NC}$", linestyle="--", alpha=0.8, lw=1.)
-    plt.title("")
-    plt.legend(fontsize=10, loc='upper right')
-    plt.grid(True, alpha=0.15)
-    plt.ylabel("Potential temperature [$\degree$C]")
-    plt.xlabel("Watermass volume tendency [Sv]")
-    plt.ylim(ylim)
-    plt.tight_layout()
+    ((-wmb.dMdt + wmb.psi)/rho0*1e-6).mean('time').plot(ax=ax, y="thetao_i", label=r"$-$d$M/$d$t + \Psi$")
+    ((wmb.G_tend - wmb.G_adv)/rho0*1e-6).mean('time').plot(ax=ax, y="thetao_i", label=r"$\mathcal{G}_{tend} - \mathcal{G}_{adv}$")
+    ((wmb.G_NC) / rho0*1e-6).mean('time').plot(ax=ax, y="thetao_i", label=r"$\mathcal{G}_{NC}$", linestyle="--", alpha=0.8, lw=1.)
+    ax.set_title("")
+    ax.legend(fontsize=10, loc='upper right')
+    ax.grid(True, alpha=0.15)
+    ax.set_ylabel("Potential temperature [$\degree$C]")
+    ax.set_xlabel("Watermass volume tendency [Sv]")
+    ax.set_ylim(ylim)
+    fig.tight_layout()
+    
+    return fig, axes
     
 def plot_wmb_decomposed(wmb, ylim=[-3, 36], rho0=1035.):
-    plt.figure(figsize=(14, 6))
+    fig, axes = plt.subplots(1,2,figsize=(14, 6))
 
-    plt.subplot(1,2,1)
-    (wmb['dMdt'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"d$M(\Theta)/$d$t$ (Mass Tendency)")
-    (-wmb['psi'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"$-\Psi(\Theta)$ (Convergent Transport)")
-    (wmb['G_NC'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"$\mathcal{G}_{NC}(\Theta)$ (Non-Conservative Forcing)")
-    (wmb['N'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"$\mathcal{N}(\Theta)$ (Numerical Mixing)")
+    ax = axes[0]
+    (wmb['dMdt'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"d$M(\Theta)/$d$t$ (Mass Tendency)")
+    (-wmb['psi'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"$-\Psi(\Theta)$ (Convergent Transport)")
+    (wmb['G_NC'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"$\mathcal{G}_{NC}(\Theta)$ (Non-Conservative Forcing)")
+    (wmb['N'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"$\mathcal{N}(\Theta)$ (Numerical Mixing)")
 
-    plt.title("Time-mean Water Mass Budget")
-    plt.legend(fontsize=10, loc='upper right')
-    plt.grid(True, alpha=0.15)
-    plt.ylabel("Potential temperature [$\degree$C]")
-    plt.xlabel("Watermass volume tendency [Sv]")
-    plt.ylim(ylim)
+    ax.set_title("Time-mean Water Mass Budget")
+    ax.legend(fontsize=10, loc='upper right')
+    ax.grid(True, alpha=0.15)
+    ax.set_ylabel("Potential temperature [$\degree$C]")
+    ax.set_xlabel("Watermass volume tendency [Sv]")
+    ax.set_ylim(ylim)
 
-    plt.subplot(1,2,2)
-    (wmb['G_NC'].mean('time')/rho0*1e-6).plot(color="k", ls="-", y="thetao_i", label=r"$\mathcal{G}_{NC}(\Theta)$ (Non-Conservative Forcing)")
-    (wmb['G_surf'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"Surface Fluxes")
-    l = (wmb['G_mix'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"Mixing")
-    (wmb['G_ice'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"Frazil Ice")
-    (wmb['G_geo'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"Geothermal")
-    (wmb['G_iso'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"Stirring")
-    (wmb['N'].mean('time')/rho0*1e-6).plot(color=l[0].get_c(), alpha=0.5, ls="--", y="thetao_i", label=r"$\mathcal{N}(\Theta)$ (Numerical Mixing)")
+    ax = axes[1]
+    (wmb['G_NC'].mean('time')/rho0*1e-6).plot(ax=ax, color="k", ls="-", y="thetao_i", label=r"$\mathcal{G}_{NC}(\Theta)$ (Non-Conservative Forcing)")
+    (wmb['G_surf'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Surface Fluxes")
+    l = (wmb['G_mix'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Mixing")
+    (wmb['G_ice'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Frazil Ice")
+    (wmb['G_geo'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Geothermal")
+    (wmb['G_iso'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Stirring")
+    (wmb['N'].mean('time')/rho0*1e-6).plot(ax=ax, color=l[0].get_c(), alpha=0.5, ls="--", y="thetao_i", label=r"$\mathcal{N}(\Theta)$ (Numerical Mixing)")
 
 
-    plt.title("Decomposition of time-mean Non-Conservative WMT")
-    plt.legend(fontsize=10, loc='upper right')
-    plt.grid(True, alpha=0.15)
-    plt.ylabel("Potential temperature [$\degree$C]")
-    plt.xlabel("Watermass volume tendency [Sv]")
-    plt.ylim(ylim)
-    plt.tight_layout()
+    ax.set_title("Decomposition of time-mean Non-Conservative WMT")
+    ax.legend(fontsize=10, loc='upper right')
+    ax.grid(True, alpha=0.15)
+    ax.set_ylabel("Potential temperature [$\degree$C]")
+    ax.set_xlabel("Watermass volume tendency [Sv]")
+    ax.set_ylim(ylim)
+    fig.tight_layout()
+    
+    return fig, axes
