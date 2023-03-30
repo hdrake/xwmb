@@ -17,8 +17,8 @@ def calc_wmb_theta(
     
     # Transform budget to theta coordinates
     theta_i_bins = np.arange(theta_min - Δtheta*0.5, theta_max + Δtheta*0.5, Δtheta)
-    theta_l_levs = np.arange(theta_min, theta_max, Δtheta)
-    ds_theta = transform_to_theta(ds, grid, theta_i_bins, theta_l_levs)
+    theta_l_bins = np.arange(theta_min, theta_max, Δtheta)
+    ds_theta = transform_to_theta(ds, grid, theta_l_bins, theta_i_bins)
     
     wmb = xr.Dataset()
     calc_wmt_theta(wmb, ds_theta, grid, ocean_grid, Δtheta, mask=mask, rho0=rho0, Cp=Cp)
@@ -26,15 +26,13 @@ def calc_wmb_theta(
     calc_psi_theta(wmb, ds, grid, i, j, theta_i_bins, ocean_grid['geolon'].shape==ocean_grid['geolon_c'].shape)
     
     # Discretization error/residual terms
-    wmb['N_A'] =   wmb.G_adv  + wmb.Psi
+    wmb['N_A'] =   wmb.G_adv  + wmb.psi
     wmb['N_D'] = - wmb.G_tend - wmb.dMdt
     wmb['N'] = wmb['N_A'] + wmb['N_D']
         
     return wmb
 
-def transform_to_theta(ds, grid, theta_i_bins, theta_l_levs):
-    
-    ds['thetao_i'] = grid.transform(ds.thetao, 'Z', ds.z_i, target_data=ds.z_l, method="linear")
+def transform_to_theta(ds, grid, theta_l_bins, theta_i_bins):
     
     budget_vars = [
         "opottempdiff", "opottemppmdiff",
@@ -47,10 +45,10 @@ def transform_to_theta(ds, grid, theta_i_bins, theta_l_levs):
         warnings.filterwarnings("ignore")
 
         ds_theta = xr.Dataset(
-            {v:grid.transform(ds[v], 'Z', theta_i_bins, target_data=ds.thetao_i, method="conservative") for v in budget_vars if v in ds.data_vars}
+            {v:grid.transform(ds[v], 'Z', target=theta_l_bins, target_data=ds.thetao, method="conservative") for v in budget_vars if v in ds.data_vars}
         ) # note: this binning effectively already calculates the difference between the integral below Θ+ΔΘ and the integral below Θ
 
-        ds_theta = ds_theta.assign_coords({"thetao_l": theta_l_levs})
+        ds_theta = ds_theta.rename({'thetao':'thetao_i'}).assign_coords({"thetao_i": theta_i_bins[1:-1]})
         
     return ds_theta
 
@@ -68,7 +66,7 @@ def plot_wmb(wmb, ylim=[-3, 36], rho0=1035.):
     plt.ylim(ylim)
 
     plt.subplot(1,3,2)
-    (wmb.Psi.mean('time')  / rho0*1e-6 ).plot(y="thetao_i", label="$\Psi(\Theta)$ from $\mathbf{u}(\Theta)$")
+    (wmb.psi.mean('time')  / rho0*1e-6 ).plot(y="thetao_i", label="$\Psi(\Theta)$ from $\mathbf{u}(\Theta)$")
     ((-wmb.G_adv).mean('time') / rho0*1e-6 ).plot(y="thetao_i", label="$-\mathcal{G}_{adv}$ from $\dot{\Theta}$")
     plt.title("")
     plt.legend(fontsize=10, loc='upper right')
@@ -80,15 +78,15 @@ def plot_wmb(wmb, ylim=[-3, 36], rho0=1035.):
     plt.subplot(1,3,3)
     plt.fill_betweenx(
         wmb.thetao_i,
-        wmb.G_NC.mean('time')/rho0*1e-6, (-wmb.dMdt + wmb.Psi).mean('time')/rho0*1e-6, where=wmb.N.mean('time')>=0, 
+        wmb.G_NC.mean('time')/rho0*1e-6, (-wmb.dMdt + wmb.psi).mean('time')/rho0*1e-6, where=wmb.N.mean('time')>=0, 
         alpha=0.25, color="r", label=r"$\mathcal{N} = \mathcal{N}_{A} + \mathcal{N}_{D} = -$d$M/$d$t + \Psi - \mathcal{G}_{NC}$"
     )
     plt.fill_betweenx(
         wmb.thetao_i,
-        wmb.G_NC.mean('time')/rho0*1e-6, (-wmb.dMdt + wmb.Psi).mean('time')/rho0*1e-6, where=wmb.N.mean('time')<0, 
+        wmb.G_NC.mean('time')/rho0*1e-6, (-wmb.dMdt + wmb.psi).mean('time')/rho0*1e-6, where=wmb.N.mean('time')<0, 
         alpha=0.25, color="b"
     )
-    ((-wmb.dMdt + wmb.Psi)/rho0*1e-6).mean('time').plot(y="thetao_i", label=r"$-$d$M/$d$t + \Psi$")
+    ((-wmb.dMdt + wmb.psi)/rho0*1e-6).mean('time').plot(y="thetao_i", label=r"$-$d$M/$d$t + \Psi$")
     ((wmb.G_tend - wmb.G_adv)/rho0*1e-6).mean('time').plot(y="thetao_i", label=r"$\mathcal{G}_{tend} - \mathcal{G}_{adv}$")
     ((wmb.G_NC) / rho0*1e-6).mean('time').plot(y="thetao_i", label=r"$\mathcal{G}_{NC}$", linestyle="--", alpha=0.8, lw=1.)
     plt.title("")
@@ -104,7 +102,7 @@ def plot_wmb_decomposed(wmb, ylim=[-3, 36], rho0=1035.):
 
     plt.subplot(1,2,1)
     (wmb['dMdt'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"d$M(\Theta)/$d$t$ (Mass Tendency)")
-    (-wmb['Psi'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"$-\Psi(\Theta)$ (Convergent Transport)")
+    (-wmb['psi'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"$-\Psi(\Theta)$ (Convergent Transport)")
     (wmb['G_NC'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"$\mathcal{G}_{NC}(\Theta)$ (Non-Conservative Forcing)")
     (wmb['N'].mean('time')/rho0*1e-6).plot(ls="-", y="thetao_i", label=r"$\mathcal{N}(\Theta)$ (Numerical Mixing)")
 
