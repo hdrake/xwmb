@@ -4,7 +4,8 @@ import numpy as np
 import sectionate as sec
 
 def calc_psi_theta(wmb, ds, grid, i, j, theta_i_bins, symmetric):
-    conv = sec.convergent_transport(ds, i, j, symmetric)['conv_mass_transport'].compute()
+    kwargs = {"layer": grid.axes["Z"].coords['center'], 'interface':grid.axes["Z"].coords['outer']}
+    conv = sec.convergent_transport(ds, i, j, symmetric, **kwargs)['conv_mass_transport'].compute()
     thetao_sec = sec.extract_tracer(ds.thetao, i, j, symmetric).compute()
     
     # Compute the convergent horizontal transport integrated below each of the temperature interfaces (theta_i_bins),
