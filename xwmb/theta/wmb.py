@@ -23,7 +23,7 @@ def calc_wmb_theta(
     wmb = xr.Dataset()
     calc_wmt_theta(wmb, ds_theta, grid, ocean_grid, Δtheta, mask=mask, rho0=rho0, Cp=Cp)
     calc_dMdt_theta(wmb, ds, snap, grid_snap, ocean_grid, wmb.basin_mask, theta_i_bins, rho0=rho0)
-    calc_psi_theta(wmb, ds, grid, i, j, theta_i_bins, ocean_grid['geolon'].shape==ocean_grid['geolon_c'].shape)
+    calc_psi_theta(wmb, ds, grid, i, j, theta_i_bins, ocean_grid['geolon'].shape!=ocean_grid['geolon_c'].shape)
     
     # Discretization error/residual terms
     wmb['N_A'] =   wmb.G_adv  + wmb.psi
