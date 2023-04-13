@@ -38,7 +38,8 @@ def transform_to_theta(ds, grid, theta_l_bins, theta_i_bins):
         "opottempdiff", "opottemppmdiff",
         "frazil_heat_tendency", "internal_heat_heat_tendency", "boundary_forcing_heat_tendency",
         "T_advection_xy", "opottemptend", "Th_tendency_vert_remap",
-        "boundary_forcing_h_tendency", "dynamics_h_tendency"
+        "boundary_forcing_h_tendency", "dynamics_h_tendency",
+        "speed"
     ]
 
     with warnings.catch_warnings():
@@ -109,7 +110,7 @@ def plot_wmb_decomposed(wmb, ylim=[-3, 36], rho0=1035.):
     (wmb['N'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"$\mathcal{N}(\Theta)$ (Numerical Mixing)")
 
     ax.set_title("Time-mean Water Mass Budget")
-    ax.legend(fontsize=10, loc='upper right')
+    ax.legend(fontsize=10, loc='upper left')
     ax.grid(True, alpha=0.15)
     ax.set_ylabel("Potential temperature [$\degree$C]")
     ax.set_xlabel("Watermass volume tendency [Sv]")
@@ -126,7 +127,7 @@ def plot_wmb_decomposed(wmb, ylim=[-3, 36], rho0=1035.):
 
 
     ax.set_title("Decomposition of time-mean Non-Conservative WMT")
-    ax.legend(fontsize=10, loc='upper right')
+    ax.legend(fontsize=10, loc='upper left')
     ax.grid(True, alpha=0.15)
     ax.set_ylabel("Potential temperature [$\degree$C]")
     ax.set_xlabel("Watermass volume tendency [Sv]")
