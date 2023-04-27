@@ -13,7 +13,6 @@ def calc_wmb_theta(
         mask, i, j,
         theta_min = -4, theta_max = 40., Δtheta = 0.1,
         rho0=1035., Cp=3992.,
-        old_wmt_method=True,
     ):
     
     # Transform budget to theta coordinates
@@ -22,10 +21,7 @@ def calc_wmb_theta(
     ds_theta = transform_to_theta(ds, grid, theta_l_bins, theta_i_bins)
     
     wmb = xr.Dataset()
-    if old_wmt_method:
-        calc_wmt_theta_old(wmb, ds_theta, ocean_grid, Δtheta, mask=mask, rho0=rho0, Cp=Cp)
-    else:
-        calc_wmt_theta(wmb, ds, ocean_grid, theta_l_bins, mask=mask, rho_ref=rho0, Cp=Cp)
+    calc_wmt_theta(wmb, ds, ocean_grid, theta_l_bins, mask=mask, rho_ref=rho0, Cp=Cp)
     calc_dMdt_theta(wmb, ds, snap, grid_snap, ocean_grid, wmb.basin_mask, theta_i_bins, rho0=rho0)
     calc_psi_theta(wmb, ds, grid, i, j, theta_i_bins, ocean_grid['geolon'].shape!=ocean_grid['geolon_c'].shape)
     
