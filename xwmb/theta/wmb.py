@@ -12,7 +12,8 @@ def calc_wmb_theta(
         ds, grid, snap, grid_snap, ocean_grid,
         mask, i, j,
         theta_min = -4, theta_max = 40., Δtheta = 0.1,
-        rho0=1035., Cp=3992.
+        rho0=1035., Cp=3992.,
+        old_wmt_method=True,
     ):
     
     # Transform budget to theta coordinates
@@ -21,14 +22,17 @@ def calc_wmb_theta(
     ds_theta = transform_to_theta(ds, grid, theta_l_bins, theta_i_bins)
     
     wmb = xr.Dataset()
-    calc_wmt_theta(wmb, ds_theta, grid, ocean_grid, Δtheta, mask=mask, rho0=rho0, Cp=Cp)
+    if old_wmt_method:
+        calc_wmt_theta_old(wmb, ds_theta, ocean_grid, Δtheta, mask=mask, rho0=rho0, Cp=Cp)
+    else:
+        calc_wmt_theta(wmb, ds, ocean_grid, theta_l_bins, mask=mask, rho_ref=rho0, Cp=Cp)
     calc_dMdt_theta(wmb, ds, snap, grid_snap, ocean_grid, wmb.basin_mask, theta_i_bins, rho0=rho0)
     calc_psi_theta(wmb, ds, grid, i, j, theta_i_bins, ocean_grid['geolon'].shape!=ocean_grid['geolon_c'].shape)
     
     # Discretization error/residual terms
-    wmb['N_A'] =   wmb.G_adv  + wmb.psi
-    wmb['N_D'] = - wmb.G_tend - wmb.dMdt
-    wmb['N'] = wmb['N_A'] + wmb['N_D']
+    wmb['numerical_mixing'] =   wmb.advection  + wmb.psi
+    wmb['volume_discretization_error'] = - wmb.Eulerian_tendency - wmb.dMdt
+    wmb['numerical_errors'] = wmb['numerical_mixing'] + wmb['volume_discretization_error']
         
     return wmb
 
@@ -58,7 +62,7 @@ def plot_wmb(wmb, ylim=[-3, 36], rho0=1035.):
 
     ax=axes[0]
     (-wmb.dMdt.mean('time')  / rho0*1e-6 ).plot(ax=ax, y="thetao_i", label=r"$-$d$M/$d$t$, from diff of $h(\Theta)$ snapshots")
-    ((wmb.G_tend).mean('time') / rho0*1e-6 ).plot(ax=ax, y="thetao_i", label=r"$\mathcal{G}_{tend}$ from $\dot{\Theta}$")
+    ((wmb.Eulerian_tendency).mean('time') / rho0*1e-6 ).plot(ax=ax, y="thetao_i", label=r"$\mathcal{G}_{tend}$ from $\dot{\Theta}$")
     ax.set_title("")
     ax.legend(fontsize=10, loc='upper right')
     ax.grid(True, alpha=0.15)
@@ -68,7 +72,7 @@ def plot_wmb(wmb, ylim=[-3, 36], rho0=1035.):
 
     ax=axes[1]
     (wmb.psi.mean('time')  / rho0*1e-6 ).plot(ax=ax, y="thetao_i", label="$\Psi(\Theta)$ from $\mathbf{u}(\Theta)$")
-    ((-wmb.G_adv).mean('time') / rho0*1e-6 ).plot(ax=ax, y="thetao_i", label="$-\mathcal{G}_{adv}$ from $\dot{\Theta}$")
+    ((-wmb.advection).mean('time') / rho0*1e-6 ).plot(ax=ax, y="thetao_i", label="$-\mathcal{G}_{adv}$ from $\dot{\Theta}$")
     ax.set_title("")
     ax.legend(fontsize=10, loc='upper right')
     ax.grid(True, alpha=0.15)
@@ -79,17 +83,17 @@ def plot_wmb(wmb, ylim=[-3, 36], rho0=1035.):
     ax=axes[2]
     ax.fill_betweenx(
         wmb.thetao_i,
-        wmb.G_NC.mean('time')/rho0*1e-6, (-wmb.dMdt + wmb.psi).mean('time')/rho0*1e-6, where=wmb.N.mean('time')>=0, 
+        wmb.diabatic_forcing.mean('time')/rho0*1e-6, (-wmb.dMdt + wmb.psi).mean('time')/rho0*1e-6, where=wmb.numerical_errors.mean('time')>=0, 
         alpha=0.25, color="r", label=r"$\mathcal{N} = \mathcal{N}_{A} + \mathcal{N}_{D} = -$d$M/$d$t + \Psi - \mathcal{G}_{NC}$"
     )
     ax.fill_betweenx(
         wmb.thetao_i,
-        wmb.G_NC.mean('time')/rho0*1e-6, (-wmb.dMdt + wmb.psi).mean('time')/rho0*1e-6, where=wmb.N.mean('time')<0, 
+        wmb.diabatic_forcing.mean('time')/rho0*1e-6, (-wmb.dMdt + wmb.psi).mean('time')/rho0*1e-6, where=wmb.numerical_errors.mean('time')<0, 
         alpha=0.25, color="b"
     )
     ((-wmb.dMdt + wmb.psi)/rho0*1e-6).mean('time').plot(ax=ax, y="thetao_i", label=r"$-$d$M/$d$t + \Psi$")
-    ((wmb.G_tend - wmb.G_adv)/rho0*1e-6).mean('time').plot(ax=ax, y="thetao_i", label=r"$\mathcal{G}_{tend} - \mathcal{G}_{adv}$")
-    ((wmb.G_NC) / rho0*1e-6).mean('time').plot(ax=ax, y="thetao_i", label=r"$\mathcal{G}_{NC}$", linestyle="--", alpha=0.8, lw=1.)
+    ((wmb.Eulerian_tendency - wmb.advection)/rho0*1e-6).mean('time').plot(ax=ax, y="thetao_i", label=r"$\mathcal{G}_{tend} - \mathcal{G}_{adv}$")
+    ((wmb.diabatic_forcing) / rho0*1e-6).mean('time').plot(ax=ax, y="thetao_i", label=r"$\mathcal{G}_{NC}$", linestyle="--", alpha=0.8, lw=1.)
     ax.set_title("")
     ax.legend(fontsize=10, loc='upper right')
     ax.grid(True, alpha=0.15)
@@ -106,8 +110,8 @@ def plot_wmb_decomposed(wmb, ylim=[-3, 36], rho0=1035.):
     ax = axes[0]
     (wmb['dMdt'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"d$M(\Theta)/$d$t$ (Mass Tendency)")
     (-wmb['psi'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"$-\Psi(\Theta)$ (Convergent Transport)")
-    (wmb['G_NC'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"$\mathcal{G}_{NC}(\Theta)$ (Non-Conservative Forcing)")
-    (wmb['N'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"$\mathcal{N}(\Theta)$ (Numerical Mixing)")
+    (wmb['diabatic_forcing'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"$\mathcal{G}_{NC}(\Theta)$ (Non-Conservative Forcing)")
+    (wmb['numerical_mixing'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"$\mathcal{N}(\Theta)$ (Numerical Mixing)")
 
     ax.set_title("Time-mean Water Mass Budget")
     ax.legend(fontsize=10, loc='upper left')
@@ -117,13 +121,13 @@ def plot_wmb_decomposed(wmb, ylim=[-3, 36], rho0=1035.):
     ax.set_ylim(ylim)
 
     ax = axes[1]
-    (wmb['G_NC'].mean('time')/rho0*1e-6).plot(ax=ax, color="k", ls="-", y="thetao_i", label=r"$\mathcal{G}_{NC}(\Theta)$ (Non-Conservative Forcing)")
-    (wmb['G_surf'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Surface Fluxes")
-    l = (wmb['G_mix'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Mixing")
-    (wmb['G_ice'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Frazil Ice")
-    (wmb['G_geo'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Geothermal")
-    (wmb['G_iso'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Stirring")
-    (wmb['N'].mean('time')/rho0*1e-6).plot(ax=ax, color=l[0].get_c(), alpha=0.5, ls="--", y="thetao_i", label=r"$\mathcal{N}(\Theta)$ (Numerical Mixing)")
+    (wmb['diabatic_forcing'].mean('time')/rho0*1e-6).plot(ax=ax, color="k", ls="-", y="thetao_i", label=r"$\mathcal{G}_{NC}(\Theta)$ (Non-Conservative Forcing)")
+    (wmb['boundary_forcing'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Surface Fluxes")
+    l = (wmb['vertical_diffusion'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Mixing")
+    (wmb['frazil_ice'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Frazil Ice")
+    (wmb['geothermal'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Geothermal")
+    (wmb['neutral_diffusion'].mean('time')/rho0*1e-6).plot(ax=ax, ls="-", y="thetao_i", label=r"Stirring")
+    (wmb['numerical_errors'].mean('time')/rho0*1e-6).plot(ax=ax, color=l[0].get_c(), alpha=0.5, ls="--", y="thetao_i", label=r"$\mathcal{N}(\Theta)$ (Numerical Errors)")
 
 
     ax.set_title("Decomposition of time-mean Non-Conservative WMT")
