@@ -3,11 +3,8 @@ import numpy as np
 import warnings
 
 import regionate
+import sectionate
 from xwmt.wmt import WaterMassTransformations
-
-from .transformation import *
-from .mass import *
-from .transport import *
 
 class WaterMassBudget(WaterMassTransformations):
     def __init__(
@@ -47,27 +44,83 @@ class WaterMassBudget(WaterMassTransformations):
         elif region is None:
             pass
 
-    def diagnose_mass_budget(self):
-        pass
+    def mass_budget(self, lam):
+        lambda_name = self.lambdas_dict[lam]
+        self.wmt = self.transformations(lam)
+        self.wmt['overturning'] = self.convergent_transport(lambda_name)
+        self.wmt['mass_tendency'] = self.mass_tendency(lambda_name)
+        self.numerical_mixing()
+        return self.wmt
         
-    def convergent_transport(self):
-        pass
+    def transformations(self, lam):
+        return self.integrate_transformations(
+            lam,
+            bins=self.ds.thetao_i,
+            mask=self.region.mask,
+            group_processes=True,
+            sum_components=True
+        ).rename({f"{self.lambdas_dict[lam]}_i":f"{self.lambdas_dict[lam]}_l"})
+        
+    def convergent_transport(self, lambda_name):
+        kwargs = {
+            "utr": self.budgets_dict['mass']['transport']['X'],
+            "vtr": self.budgets_dict['mass']['transport']['Y'],
+            "layer": self.grid.axes["Z"].coords['center'],
+            "interface": self.grid.axes["Z"].coords['outer'],
+            "geometry": "spherical"
+        }
+        conv = sectionate.convergent_transport(
+            self.grid,
+            self.region.i,
+            self.region.j,
+            positive_in = self.region.mask,
+            **kwargs
+        )['conv_mass_transport']
+        lambda_sect = sectionate.extract_tracer(
+            lambda_name,
+            self.grid,
+            self.region.i,
+            self.region.j,
+        )
+        
+        self.ds['convergent_mass_transport'] = (
+            self.grid.transform(
+                conv.fillna(0.),
+                "Z",
+                target = self.ds[f"{lambda_name}_i"],
+                target_data = lambda_sect,
+                method="conservative"
+            )
+            .rename({f"{lambda_name}_i": f"{lambda_name}_l"})
+        )
+        
+        self.ds['convergent_mass_transport_below'] = self.grid.cumsum(
+            self.ds.convergent_mass_transport, "lam", boundary="fill", fill_value=0.
+        ).chunk({f"{lambda_name}_i": -1})
+        
+        self.ds['overturning'] = self.grid.interp(
+            self.ds['convergent_mass_transport_below'].sum("sect"),
+            "lam"
+        )
+        
+        return self.ds.overturning
+        
     
     def mass_tendency(self, lambda_name):
         self.ds['mass_density'] = (
             self.grid.transform(
                 self.rho_ref*self.ds[f"{self.h_name}_bounds"].fillna(0.),
                 "Z",
-                target = self.ds[f"{lambda_name}_i"].values,
+                target = self.ds[f"{lambda_name}_i"],
                 target_data = self.ds[f"{lambda_name}_bounds"],
                 method="conservative"
             )
-            .rename({f"{lambda_name}_bounds": f"{lambda_name}_l"})
+            .rename({f"{lambda_name}_i": f"{lambda_name}_l"})
         ) * self.region.mask
         
         self.ds['mass_density_below'] = self.grid.cumsum(
             self.ds.mass_density, "lam", boundary="fill", fill_value=0.
-        )
+        ).chunk({f"{lambda_name}_i": -1})
         
         self.ds['mass_below'] = (
             self.ds.mass_density_below *
@@ -77,18 +130,19 @@ class WaterMassBudget(WaterMassTransformations):
             self.grid.axes['Y'].coords['center']
         ])
         
-        self.ds['mass_tendency_below'] = (
-            self.ds.mass_below.diff('time_bounds') /
-            (self.ds.time_bounds.diff('time_bounds').astype('float')*1.e-9)
-        ).rename({"time_bounds":"time"}).assign_coords({'time': self.ds.time})
+        self.ds['mass_tendency_below'] = self.grid.interp(
+            (
+                self.ds.mass_below.diff('time_bounds') /
+                (self.ds.time_bounds.diff('time_bounds').astype('float')*1.e-9)
+            ).rename({"time_bounds":"time"}).assign_coords({'time': self.ds.time}),
+            "lam"
+        )
         
         return self.ds.mass_tendency_below
-
-    #calc_water_mass_transformations(wmb, ds, ocean_grid, bins, mask=mask, rho_ref=rho_ref, cp=cp)
-    #calc_mass_tendency(wmb, ds, snap, grid_snap, ocean_grid, wmb.basin_mask, theta_i_bins, rho_ref=rho_ref)
-    #calc_convergent_transport(wmb, ds, grid, i, j, theta_i_bins, ocean_grid['geolon'].shape!=ocean_grid['geolon_c'].shape)
-
-    # Discretization error/residual terms
-    #wmb['numerical_mixing'] =   wmb.advection  + wmb.psi
-    #wmb['volume_discretization_error'] = - wmb.Eulerian_tendency - wmb.dMdt
-    #wmb['numerical_errors'] = wmb['numerical_mixing'] + wmb['volume_discretization_error']
+    
+    def numerical_mixing(self):
+        self.wmt['numerical_mixing'] = self.wmt.advection  + self.wmt.overturning
+        self.wmt['volume_discretization_error'] = (-self.wmt.mass_tendency) - self.wmt.total_tendency 
+        self.wmt['numerical_errors'] = self.wmt['numerical_mixing'] + self.wmt['volume_discretization_error']
+        
+        return self.wmt.numerical_mixing

@@ -1,0 +1,57 @@
+---
+heat:
+  lambda: "thetao"
+  surface_lambda: "tos"
+  lhs:
+    tendency: "opotemptend"
+  rhs:
+    horizontal_advection: "T_advection_xy"
+    vertical_advection: "Th_tendency_vert_remap"
+    boundary_forcing: "boundary_forcing_heat_tendency"
+    vertical_diffusion: "opottempdiff"
+    neutral_diffusion: "opottemppmdiff"
+    frazil_ice: "frazil_heat_tendency"
+    geothermal: "internal_heat_heat_tendency"
+  surface_flux:
+    latent: "hflso"
+    sensible: "hfsso"
+    longwave: "rlntds"
+    shortwave: "rsdo"
+    frazil_ice: "hfsifrazil"
+    mass_transfer: "heat_content_surfwater"
+    basal: null
+
+salt:
+  lambda: "so"
+  surface_lambda: "sos"
+  lhs:
+    tendency: "osalttend"
+  rhs:
+    horizontal_advection: "S_advection_xy"
+    vertical_advection: "Sh_tendency_vert_remap"
+    boundary_forcing: "boundary_forcing_salt_tendency"
+    vertical_diffusion: "osaltdiff"
+    neutral_diffusion: "osaltpmdiff"
+    frazil_ice: null
+    geothermal: null
+  surface_flux:
+    latent: null
+    sensible: null
+    longwave: null
+    shortwave: null
+    frazil_ice: null
+    mass_transfer: null
+    basal: "sfdsi"
+    
+mass:
+  lambda: "density"
+  thickness: "thkcello"
+  surface_mass_flux:
+    rain_and_ice: "prlq"
+    snow: "prsn"
+    evaporation: "evs"
+    rivers: "friver"
+    icebergs: "ficeberg"
+  transport:
+    X: "umo"
+    Y: "vmo"
