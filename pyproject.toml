@@ -1,0 +1,38 @@
+[project]
+name = "xwmb"
+dynamic = ["version"]
+authors = [
+    {name="Henri F. Drake", email="hfdrake@uci.edu"},
+]
+description = "Efficient and lazy computation of Water Mass Budgets in arbitrary sub-domains of C-grid ocean models"
+readme = "README.md"
+keywords = [
+    "water mass transformation",
+    "ocean mixing"
+]
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "sectionate @ git+https://github.com/hdrake/sectionate.git@master",
+    "regionate @ git+https://github.com/hdrake/regionate.git@main",
+    "xbudget @ git+https://github.com/hdrake/xbudget.git@main",
+    "xwmt @ git+https://github.com/hdrake/xwmt.git@main",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/hdrake/xwmb"
+"Bugs/Issues/Features" = "https://github.com/hdrake/xwmb/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.version]
+path = "xwmb/version.py"
