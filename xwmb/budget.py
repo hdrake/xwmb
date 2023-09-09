@@ -55,7 +55,7 @@ class WaterMassBudget(WaterMassTransformations):
         elif region is None:
             pass
 
-    def mass_budget(self, lam, below_lam=True):
+    def mass_budget(self, lam, greater_than=False):
         lambda_name = self.get_lambda_var(lam)
         if "lam_coords" not in list(vars(self)):
             self.lam_coords = {
@@ -65,13 +65,13 @@ class WaterMassBudget(WaterMassTransformations):
             if not all([c in self.ds for c in self.lam_coords.values()]):
                 self.lam_coords = self.lam_coord_defaults(lam)
 
-        self.wmt = self.transformations(lam, below_lam=below_lam)
-        self.mass_tendency(lambda_name, below_lam=below_lam)
-        self.convergent_transport(lambda_name, below_lam=below_lam)
+        self.wmt = self.transformations(lam, greater_than=greater_than)
+        self.mass_tendency(lambda_name, greater_than=greater_than)
+        self.convergent_transport(lambda_name, greater_than=greater_than)
         self.numerical_mixing()
         return self.wmt
         
-    def transformations(self, lam, below_lam=True):
+    def transformations(self, lam, greater_than=False):
         lambda_name = self.get_lambda_var(lam)
         wmt = (
             self.integrate_transformations(
@@ -85,13 +85,15 @@ class WaterMassBudget(WaterMassTransformations):
             .assign_coords({self.lam_coords["center"]: self.ds[self.lam_coords["center"]]})
         )
         
-        if not(below_lam):
+        # Because vector normal to isosurface switches sign, we need to flip water mass transformation terms
+        # Alternatively, I think we could have just switched the ordering of the bins so that \Delta \lambda flips.
+        if greater_than:
             for v in wmt.data_vars:
                 wmt[v] *= -1
         
         return wmt
         
-    def convergent_transport(self, lambda_name, below_lam=True):
+    def convergent_transport(self, lambda_name, greater_than=False):
         kwargs = {
             "layer":     self.grid.axes["Z"].coords['center'],
             "interface": self.grid.axes["Z"].coords['outer'],
@@ -137,9 +139,9 @@ class WaterMassBudget(WaterMassTransformations):
                 .assign_coords({self.lam_coords["center"]: self.ds[self.lam_coords["center"]]})
             )
             
-            suffix = 'below' if below_lam else 'above'
+            suffix = 'greater_than' if greater_than else 'less_than'
             lam_grid = Grid(self.ds, coords={'lam': self.lam_coords}, boundary={'lam': 'extend'}, autoparse_metadata=False)
-            if not(below_lam):
+            if greater_than:
                 self.ds = self.ds.sel({
                     self.lam_coords["outer"]: self.ds[self.lam_coords["outer"]][::-1],
                     self.lam_coords["center"]: self.ds[self.lam_coords["center"]][::-1],
@@ -182,14 +184,14 @@ class WaterMassBudget(WaterMassTransformations):
             .assign_coords({self.lam_coords["center"]: self.ds[self.lam_coords["center"]]})
         ) * self.region.mask
         
-        suffix = 'below' if below_lam else 'above'
+        suffix = 'greater_than' if greater_than else 'less_than'
         lam_grid = Grid(
             self.ds,
             coords={'lam': self.lam_coords},
             boundary={'lam': 'extend'},
             autoparse_metadata=False
         )
-        if not(below_lam):
+        if greater_than:
             self.ds = self.ds.sel({
                 self.lam_coords["outer"]: self.ds[self.lam_coords["outer"]][::-1],
                 self.lam_coords["center"]: self.ds[self.lam_coords["center"]][::-1],
@@ -245,7 +247,7 @@ class WaterMassBudget(WaterMassTransformations):
         return self.wmt.overturning
         
     
-    def mass_tendency(self, lambda_name, below_lam=True):
+    def mass_tendency(self, lambda_name, greater_than=False):
         ax = "Z" if "Z_bounds" not in self.grid.axes else "Z_bounds"
         if "time_bounds" in self.ds.dims:
             self.ds[f"{lambda_name}_i_bounds"] = (
@@ -266,14 +268,14 @@ class WaterMassBudget(WaterMassTransformations):
                 .assign_coords({self.lam_coords["center"]: self.ds[self.lam_coords["center"]]})
             ) * self.region.mask
 
-            suffix = 'below' if below_lam else 'above'
+            suffix = 'greater_than' if greater_than else 'less_than'
             lam_grid = Grid(
                 self.ds,
                 coords={'lam': self.lam_coords},
                 boundary={'lam': 'extend'},
                 autoparse_metadata=False
             )
-            if not(below_lam):
+            if greater_than:
                 self.ds = self.ds.sel({
                     self.lam_coords["outer"]: self.ds[self.lam_coords["outer"]][::-1],
                     self.lam_coords["center"]: self.ds[self.lam_coords["center"]][::-1],
