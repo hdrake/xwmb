@@ -1,0 +1,86 @@
+# INTERIOR OCEAN FIELDS, saved monthly on natv grid (or change to rho2)
+### state variables
+"ocean_model",           "thetao",                              "thetao",                          "ocean_month",        "all", "mean", "none",2
+"ocean_model",           "so",                                  "so",                              "ocean_month",        "all", "mean", "none",2
+"ocean_model",           "rhopot2",                             "rhopot2",                         "ocean_month",        "all", "mean", "none",2
+"ocean_model",           "thkcello",                            "thkcello",                        "ocean_month",        "all", "mean", "none",2
+"ocean_model_rho2",      "thetao",                              "thetao",                          "ocean_month_rho2",   "all", "mean", "none",2
+"ocean_model_rho2",      "so",                                  "so",                              "ocean_month_rho2",   "all", "mean", "none",2
+"ocean_model_rho2",      "rhopot2",                             "rhopot2",                         "ocean_month_rho2",   "all", "mean", "none",2
+"ocean_model_rho2",      "thkcello",                            "thkcello",                        "ocean_month_rho2",   "all", "mean", "none",2
+
+### heat and salt tendencies
+# heat
+"ocean_model", "opottemptend",                        "opottemptend",                         "ocean_month",        "all", "mean", "none",2
+"ocean_model", "Th_tendency_vert_remap",              "Th_tendency_vert_remap",               "ocean_month",        "all", "mean", "none",2
+"ocean_model", "T_advection_xy",                      "T_advection_xy",                       "ocean_month",        "all", "mean", "none",2
+"ocean_model", "opottemppmdiff",                      "opottemppmdiff",                       "ocean_month",        "all", "mean", "none",2
+"ocean_model", "opottempdiff",                        "opottempdiff",                         "ocean_month",        "all", "mean", "none",2
+"ocean_model", "boundary_forcing_heat_tendency",      "boundary_forcing_heat_tendency",       "ocean_month",        "all", "mean", "none",2
+"ocean_model", "frazil_heat_tendency",                "frazil_heat_tendency",                 "ocean_month",        "all", "mean", "none",2
+"ocean_model", "internal_heat_heat_tendency",         "internal_heat_heat_tendency",          "ocean_month",        "all", "mean", "none",2
+# salt
+"ocean_model", "osalttend",                           "osalttend",                            "ocean_month",        "all", "mean", "none",2
+"ocean_model", "Sh_tendency_vert_remap",              "Sh_tendency_vert_remap",               "ocean_month",        "all", "mean", "none",2
+"ocean_model", "S_advection_xy",                      "S_advection_xy",                       "ocean_month",        "all", "mean", "none",2
+"ocean_model", "osaltpmdiff",                         "osaltpmdiff",                          "ocean_month",        "all", "mean", "none",2
+"ocean_model", "osaltdiff",                           "osaltdiff",                            "ocean_month",        "all", "mean", "none",2
+"ocean_model", "boundary_forcing_salt_tendency",      "boundary_forcing_salt_tendency",       "ocean_month",        "all", "mean", "none",2
+# thickness
+"ocean_model", "dhdt",                                "dhdt",                                 "ocean_month",        "all", "mean", "none",2
+"ocean_model", "dynamics_h_tendency",                 "dynamics_h_tendency",                  "ocean_month",        "all", "mean", "none",2
+"ocean_model", "vert_remap_h_tendency",               "vert_remap_h_tendency",                "ocean_month",        "all", "mean", "none",2
+"ocean_model", "boundary_forcing_h_tendency",         "boundary_forcing_h_tendency",          "ocean_month",        "all", "mean", "none",2
+"ocean_model", "internal_heat_h_tendency",            "internal_heat_h_tendency",             "ocean_month",        "all", "mean", "none",2
+"ocean_model",  "volcello",                           "volcello",                             "ocean_month",        "all", "mean", "none",2
+
+# mass transport for residual mean velocity
+"ocean_model",           "umo",                 "umo",                  "ocean_month",           "all", "mean", "none",2
+"ocean_model",           "vmo",                 "vmo",                  "ocean_month",           "all", "mean", "none",2
+"ocean_model_rho2",      "umo",                 "umo",                  "ocean_month_rho2",      "all", "mean", "none",2
+"ocean_model_rho2",      "vmo",                 "vmo",                  "ocean_month_rho2",      "all", "mean", "none",2
+
+# heat and salinity transport by residual mean advection
+"ocean_model", "T_adx",                 "T_adx",                  "ocean_month",        "all", "mean", "none",2
+"ocean_model", "T_ady",                 "T_ady",                  "ocean_month",        "all", "mean", "none",2
+"ocean_model", "S_adx",                 "S_adx",                  "ocean_month",        "all", "mean", "none",2
+"ocean_model", "S_ady",                 "S_ady",                  "ocean_month",        "all", "mean", "none",2
+
+### snapshots (required for closing layer-wise mass budgets)
+"ocean_model", "thetao",                              "thetao",                               "ocean_month_snap",   "all", "none", "none",2
+"ocean_model", "so",                                  "so",                                   "ocean_month_snap",   "all", "none", "none",2
+"ocean_model", "rhopot2",                             "rhopot2",                              "ocean_month_snap",   "all", "none", "none",2
+"ocean_model", "thkcello",                            "thkcello",                             "ocean_month_snap",   "all", "none", "none",2
+"ocean_model", "volcello",                            "volcello",                             "ocean_month_snap",   "all", "none", "none",2
+
+# (Optional) SURFACE FLUXES at daily resolution on native horizontal resolution
+### surface fluxes (mass)
+"ocean_model",  "prlq",                         "prlq",                         "ocean_daily",        "all", "mean", "none",2
+"ocean_model",  "prsn",                         "prsn",                         "ocean_daily",        "all", "mean", "none",2
+"ocean_model",  "evs",                          "evs",                          "ocean_daily",        "all", "mean", "none",2
+"ocean_model",  "friver",                       "friver",                       "ocean_daily",        "all", "mean", "none",2
+"ocean_model",  "ficeberg",                     "ficeberg",                     "ocean_daily",        "all", "mean", "none",2
+"ocean_model",  "fsitherm",                     "fsitherm",                     "ocean_daily",        "all", "mean", "none",2
+"ocean_model",  "wfo",                          "wfo",                          "ocean_daily",        "all", "mean", "none",2
+"ocean_model",  "net_massout",                  "net_massout",                  "ocean_daily",        "all", "mean", "none",2
+"ocean_model",  "net_massin",                   "net_massin",                   "ocean_daily",        "all", "mean", "none",2
+
+### surface fluxes (salt)
+"ocean_model",  "sfdsi",                        "sfdsi",                        "ocean_daily",        "all", "mean", "none",2
+#"ocean_model",  "sfriver",                     "sfriver",                      "ocean_daily",        "all", "mean", "none",2  # to be coded if rivers have salt
+
+### surface fluxes (heat)
+"ocean_model",  "hfds",                         "hfds",                         "ocean_daily",        "all", "mean", "none",2  # total heat entering ocean surface
+"ocean_model",  "heat_content_surfwater",       "heat_content_surfwater",       "ocean_daily",        "all", "mean", "none",2  # total heat content of surface freshwater exchange
+"ocean_model",  "hfrainds",                     "hfrainds",                     "ocean_daily",        "all", "mean", "none",2  # heat content of lprec fprec condensate
+"ocean_model",  "hfevapds",                     "hfevapds",                     "ocean_daily",        "all", "mean", "none",2  # heat content of mass leaving ocean
+"ocean_model",  "hfrunoffds",                   "hfrunoffds",                   "ocean_daily",        "all", "mean", "none",2  # heat content of lrunoff frunoff
+"ocean_model",  "hfsnthermds",                  "hfsnthermds",                  "ocean_daily",        "all", "mean", "none",2  # latent heat to melt snow
+"ocean_model",  "hfsifrazil",                   "hfsifrazil",                   "ocean_daily",        "all", "mean", "none",2  # frazil formation
+"ocean_model",  "hfsithermds",                  "hfsithermds",                  "ocean_daily",        "all", "mean", "none",2  # computed in SIS2
+"ocean_model",  "hfibthermds",                  "hfibthermds",                  "ocean_daily",        "all", "mean", "none",2  # latent heat to melt icebergs
+"ocean_model",  "hfsolidrunoffds",              "hfsolidrunoffds",              "ocean_daily",        "all", "mean", "none",2  # ne 0 since ice has SST
+"ocean_model",  "rlntds",                       "rlntds",                       "ocean_daily",        "all", "mean", "none",2  # longwave down
+"ocean_model",  "hflso",                        "hflso",                        "ocean_daily",        "all", "mean", "none",2  # latent heat for evap+melt
+"ocean_model",  "hfsso",                        "hfsso",                        "ocean_daily",        "all", "mean", "none",2  # sensible from air-sea and ice-sea
+"ocean_model",  "rsdo",                         "rsdo",                         "ocean_daily",        "all", "mean", "none",2  # penetrative shortwave flux at interface
