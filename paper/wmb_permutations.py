@@ -7,6 +7,7 @@ import numpy as np
 import xarray as xr
 import xbudget
 import regionate
+import xwmt
 import xwmb
 
 sys.path.append("../examples/")
@@ -30,6 +31,18 @@ def main(argv):
 
     for lam in ["heat", "salt", "sigma2"]:
         grid = load_baltic(gridname, dt)
+        default_bins=True
+        if lam=="sigma2": # Specify the target sigma2 bins from the diagnostic rho2 grid
+            grid._ds = grid._ds.assign_coords({
+                "sigma2_l_target": grid_ref._ds['sigma2_l'].rename({"sigma2_l":"sigma2_l_target"}),
+                "sigma2_i_target": grid_ref._ds['sigma2_i'].rename({"sigma2_i":"sigma2_i_target"}),
+            })
+            grid = xwmt.add_gridcoords(
+                grid,
+                {"Z_target": {"center": "sigma2_l_target", "outer": "sigma2_i_target"}},
+                {"Z_target": "extend"}
+            )
+            default_bins=False
 
         budgets_dict = xbudget.load_preset_budget(model="MOM6_3Donly")
         xbudget.collect_budgets(grid._ds, budgets_dict)
@@ -48,23 +61,12 @@ def main(argv):
                 budgets_dict,
                 region
             )
-            default_bins=True
-            if lam=="sigma2":
-                wmb.target_coords = {
-                    "center": "sigma2_l_target",
-                    "outer": "sigma2_i_target"
-                }
-                wmb.grid._ds = wmb.grid._ds.assign_coords({
-                    "sigma2_l_target": grid_ref._ds['sigma2_l'].rename({"sigma2_l":"sigma2_l_target"}),
-                    "sigma2_i_target": grid_ref._ds['sigma2_i'].rename({"sigma2_i":"sigma2_i_target"}),
-                })
-                default_bins=False
             wmb.mass_budget(lam, default_bins=default_bins)
             wmb.wmt.load()
 
         path = pathlib.Path("data/")
         path.mkdir(parents=True, exist_ok=True)
-        wmb.wmt.to_netcdf(f"data/baltic_wmb_{lam}_{gridname}_{dt}.nc")
+        wmb.wmt.to_netcdf(f"data/baltic_wmb_{lam}_{gridname}_{dt}.nc", mode="w")
 
 if __name__ == "__main__":
     main(sys.argv[1:])

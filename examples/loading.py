@@ -104,6 +104,7 @@ def load_baltic(gridname, dt):
     metrics = {
         ('X','Y'): "areacello",
     }
-    grid = Grid(ds, coords=coords, metrics=metrics, boundary={"X":"extend", "Y":"extend", "Z":"extend"}, autoparse_metadata=False)
+    boundary = {"X":"extend", "Y":"extend", "Z":"extend"}
+    grid = Grid(ds, coords=coords, metrics=metrics, boundary=boundary, autoparse_metadata=False)
     
     return grid

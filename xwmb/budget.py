@@ -6,6 +6,7 @@ import regionate
 import sectionate
 
 from xwmt.wmt import WaterMassTransformations
+from xwmt.wm import add_gridcoords
 from xgcm import Grid
 import xbudget
 
@@ -57,32 +58,51 @@ class WaterMassBudget(WaterMassTransformations):
         elif region is None:
             pass
 
-    def mass_budget(self, lam, greater_than=False, default_bins=False):
+    def mass_budget(self, lam, greater_than=False, default_bins=False, drop_sections=False):
         lambda_name = self.get_lambda_var(lam)
-        if "target_coords" not in list(vars(self)):
-            self.target_coords = {"center": f"{lambda_name}_l_target", "outer": f"{lambda_name}_i_target"}
-            if default_bins:
-                self.target_coords = self.lam_coord_defaults(lam)
+        target_coords = {"center": f"{lambda_name}_l_target", "outer": f"{lambda_name}_i_target"}
+        if default_bins:
+            if "Z_target" not in self.grid.axes:
+                self.add_default_gridcoords(lam)
             else:
-                if all([c.replace("_target", "") in self.grid._ds for c in self.target_coords.values()]):
-                    self.grid._ds = self.grid._ds.assign_coords({
-                        f"{lambda_name}_l_target": xr.DataArray(
-                            self.grid._ds[f"{lambda_name}_l"].values, dims=(f"{lambda_name}_l_target",)
-                        ),
-                        f"{lambda_name}_i_target": xr.DataArray(
-                            self.grid._ds[f"{lambda_name}_i"].values, dims=(f"{lambda_name}_i_target",)
-                        )
-                    })
-                else:
+                raise ValueError(
+                    """Cannot pass `default_bins=True` when `Z_target in WaterMassBudget.grid.axes`."""
+                )
+        else:
+            avail_target_coords = [c in self.grid._ds for c in target_coords.values()]
+            avail_lambda_coords = [
+                c.replace("_target", "") in self.grid._ds
+                for c in target_coords.values()
+            ]
+            if "Z_target" not in self.grid.axes:
+                if all(avail_lambda_coords):
+                    if not all(avail_target_coords):
+                        self.grid._ds = self.grid._ds.assign_coords({
+                            target_coords["center"]: xr.DataArray(
+                                self.grid._ds[target_coords["center"].replace("_target", "")].values,
+                                dims=(target_coords["center"],)
+                            ),
+                            target_coords["outer"]: xr.DataArray(
+                                self.grid._ds[target_coords["outer"].replace("_target", "")].values,
+                                dims=(target_coords["outer"],)
+                            )
+                        })
+                    self.grid = add_gridcoords(
+                        self.grid,
+                        {"Z_target": target_coords},
+                        {"Z_target": "extend"}
+                    )
+                else: # `elif not all(avail_lambda_coords):`
                     raise ValueError(
-                        """Requires one of the following:
-                             1) 'f{lambda_name}_i' and 'f{lambda_name}_l' in WaterMassBudget.grid._ds,
-                             2) specify WaterMassBudget.target_coords, or
-                             3) set `default_bins=True`.""")
+                        f"""To specify target grid, either pass `default_bins=True` or
+                        include {target_coords["center"]} and {target_coords["outer"]}
+                        in `WaterMassBudget.grid._ds`.""")
+        self.target_coords = target_coords
+                
 
         self.wmt = self.transformations(lam, greater_than=greater_than)
         self.mass_tendency(lambda_name, greater_than=greater_than)
-        self.convergent_transport(lambda_name, greater_than=greater_than)
+        self.convergent_transport(lambda_name, greater_than=greater_than, drop_sections=drop_sections)
         self.numerical_mixing()
         return self.wmt
         
@@ -116,7 +136,7 @@ class WaterMassBudget(WaterMassTransformations):
         
         return wmt
         
-    def convergent_transport(self, lambda_name, greater_than=False):
+    def convergent_transport(self, lambda_name, greater_than=False, drop_sections=False):
         kwargs = {
             "layer":     self.grid.axes["Z"].coords['center'],
             "interface": self.grid.axes["Z"].coords['outer'],
@@ -145,14 +165,14 @@ class WaterMassBudget(WaterMassTransformations):
             )
 
             self.grid._ds[f'{lambda_name}_i_sect'] = (
-                self.grid.interp(self.grid._ds[f"{lambda_name}_sect"], "Z", boundary="extend")
+                self.grid.interp(self.grid._ds[f'{lambda_name}_sect'], "Z", boundary="extend")
                 .chunk({self.grid.axes['Z'].coords['outer']: -1})
                 .rename(f'{lambda_name}_i_sect')
             )
 
             self.grid._ds['convergent_mass_transport'] = (
                 self.grid.transform(
-                    self.grid._ds.conv.fillna(0.),
+                    self.grid._ds['conv'].fillna(0.),
                     "Z",
                     target = self.grid._ds[self.target_coords["outer"]],
                     target_data = self.grid._ds[f'{lambda_name}_i_sect'],
@@ -181,7 +201,7 @@ class WaterMassBudget(WaterMassTransformations):
                     autoparse_metadata=False
                 )
                 self.grid._ds[f'convergent_mass_transport_{suffix}'] = lam_rev_grid.cumsum(
-                    self.grid._ds.convergent_mass_transport, "lam", boundary="fill", fill_value=0.
+                    self.grid._ds['convergent_mass_transport'], "lam", boundary="fill", fill_value=0.
                 ).chunk({self.target_coords["outer"]: -1})
                 self.grid._ds = self.grid._ds.sel({
                     self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]][::-1],
@@ -189,7 +209,7 @@ class WaterMassBudget(WaterMassTransformations):
                 })
             else:
                 self.grid._ds[f'convergent_mass_transport_{suffix}'] = lam_grid.cumsum(
-                    self.grid._ds.convergent_mass_transport, "lam", boundary="fill", fill_value=0.
+                    self.grid._ds['convergent_mass_transport'], "lam", boundary="fill", fill_value=0.
                 ).chunk({self.target_coords["outer"]: -1}).assign_coords(
                     {self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]]}
                 )
@@ -295,6 +315,9 @@ class WaterMassBudget(WaterMassTransformations):
             ).sum("sect").assign_coords(
                 {self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]}
             )
+            if drop_sections:
+                self.grid._ds = self.grid._ds.drop_dims("sect")
+            
         else:
             self.wmt['overturning'] = xr.zeros_like(self.wmt['mass_source'])
         
@@ -412,7 +435,7 @@ class WaterMassBudget(WaterMassTransformations):
             if ("spurious_numerical_mixing" in self.wmt) and ("advection_plus_BC" in self.wmt):
                 self.wmt["diabatic_advection"] = self.wmt.advection_plus_BC + self.wmt.spurious_numerical_mixing
 
-    def lam_coord_defaults(self, lam):
+    def add_default_gridcoords(self, lam):
         lambda_name = self.get_lambda_var(lam)
         if lam=="sigma2":
             lam_min, lam_max, dlam = 0., 50., 0.1
@@ -427,4 +450,9 @@ class WaterMassBudget(WaterMassTransformations):
             f"{lambda_name}_l_target" : np.arange(lam_min, lam_max, dlam),
             f"{lambda_name}_i_target" : np.arange(lam_min-dlam/2., lam_max+dlam/2, dlam),
         })
-        return {"outer": f"{lambda_name}_i_target", "center": f"{lambda_name}_l_target"}
+        
+        self.grid = add_gridcoords(
+            self.grid,
+            {"Z_target": {"outer": f"{lambda_name}_i_target", "center": f"{lambda_name}_l_target"}},
+            {"Z_target": "extend"}
+        )            
