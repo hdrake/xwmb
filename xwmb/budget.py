@@ -15,7 +15,7 @@ class WaterMassBudget(WaterMassTransformations):
         self,
         grid,
         budgets_dict,
-        region,
+        region=None,
         decompose=[],
         teos10=True,
         rho_ref=1035.,
@@ -56,7 +56,15 @@ class WaterMassBudget(WaterMassTransformations):
                 self.grid
             ).regions[0]
         elif region is None:
-            pass
+            mask = xr.ones_like(
+                self.grid._ds[self.grid.axes['Y'].coords['center']] *
+                self.grid._ds[self.grid.axes['X'].coords['center']]
+            )
+            self.region = regionate.MaskRegions(
+                mask,
+                self.grid
+            ).regions[0]
+            self.assert_zero_transport = True
 
     def mass_budget(self, lam, greater_than=False, default_bins=False, drop_sections=False):
         lambda_name = self.get_lambda_var(lam)
@@ -98,12 +106,17 @@ class WaterMassBudget(WaterMassTransformations):
                         include {target_coords["center"]} and {target_coords["outer"]}
                         in `WaterMassBudget.grid._ds`.""")
         self.target_coords = target_coords
-                
-
+        self.ax_bounds = "Z" if "Z_bounds" not in self.grid.axes else "Z_bounds"
+        self.prebinned = all([
+            (c in self.grid.axes[self.ax_bounds].coords.values())
+            for c in [f"{lambda_name}_l", f"{lambda_name}_i"]
+        ])
+        
         self.wmt = self.transformations(lam, greater_than=greater_than)
-        self.mass_tendency(lambda_name, greater_than=greater_than)
+        self.mass_bounds(lambda_name, greater_than=greater_than)
         self.convergent_transport(lambda_name, greater_than=greater_than, drop_sections=drop_sections)
-        self.numerical_mixing()
+        mass_tendency(self.wmt)
+        close_budget(self.wmt)
         return self.wmt
         
     def transformations(self, lam, greater_than=False):
@@ -131,7 +144,7 @@ class WaterMassBudget(WaterMassTransformations):
             'bottom_flux',
             'frazil_ice'
         ]
-        if all([term in wmt for term in boundary_flux_terms]):
+        if any([term in wmt for term in boundary_flux_terms]):
             wmt['boundary_fluxes'] = sum([wmt[term] for term in boundary_flux_terms if term in wmt])
         
         return wmt
@@ -157,25 +170,29 @@ class WaterMassBudget(WaterMassTransformations):
                 **kwargs
             ).rename({"lat":"lat_sect", "lon":"lon_sect"})['conv_mass_transport']
 
-            self.grid._ds[f'{lambda_name}_sect'] = sectionate.extract_tracer(
-                lambda_name,
-                self.grid,
-                self.region.i,
-                self.region.j,
-            )
-
-            self.grid._ds[f'{lambda_name}_i_sect'] = (
-                self.grid.interp(self.grid._ds[f'{lambda_name}_sect'], "Z", boundary="extend")
-                .chunk({self.grid.axes['Z'].coords['outer']: -1})
-                .rename(f'{lambda_name}_i_sect')
-            )
+            if self.prebinned:
+                target_data = self.grid._ds[f'{lambda_name}_i']
+            else:
+                self.grid._ds[f'{lambda_name}_sect'] = sectionate.extract_tracer(
+                    lambda_name,
+                    self.grid,
+                    self.region.i,
+                    self.region.j,
+                )
+    
+                self.grid._ds[f'{lambda_name}_i_sect'] = (
+                    self.grid.interp(self.grid._ds[f'{lambda_name}_sect'], "Z", boundary="extend")
+                    .chunk({self.grid.axes['Z'].coords['outer']: -1})
+                    .rename(f'{lambda_name}_i_sect')
+                )
+                target_data = self.grid._ds[f'{lambda_name}_i_sect']
 
             self.grid._ds['convergent_mass_transport'] = (
                 self.grid.transform(
                     self.grid._ds['conv'].fillna(0.),
                     "Z",
                     target = self.grid._ds[self.target_coords["outer"]],
-                    target_data = self.grid._ds[f'{lambda_name}_i_sect'],
+                    target_data = target_data,
                     method="conservative"
                 )
                 .rename({self.target_coords["outer"]: self.target_coords["center"]})
@@ -215,11 +232,14 @@ class WaterMassBudget(WaterMassTransformations):
                 )
 
         # Compute mass source term
-        lam_i = (
-            self.grid.interp(self.grid._ds[f"{lambda_name}"], "Z", boundary="extend")
-            .chunk({self.grid.axes['Z'].coords['outer']: -1})
-            .rename(f"{lambda_name}_i")
-        )
+        if self.prebinned:
+            target_data = self.grid._ds[f'{lambda_name}_i']
+        else:
+            target_data = (
+                self.grid.interp(self.grid._ds[f"{lambda_name}"], "Z", boundary="extend")
+                .chunk({self.grid.axes['Z'].coords['outer']: -1})
+                .rename(f"{lambda_name}_i")
+            )
         
         mass_flux_varname = "mass_rhs_sum_surface_exchange_flux"
         self.grid._ds['mass_source_density'] = (
@@ -227,7 +247,7 @@ class WaterMassBudget(WaterMassTransformations):
                 self.grid._ds[mass_flux_varname].fillna(0.),
                 "Z",
                 target = self.grid._ds[self.target_coords["outer"]],
-                target_data = lam_i,
+                target_data = target_data,
                 method="conservative"
             )
             .rename({self.target_coords["outer"]: self.target_coords["center"]})
@@ -277,7 +297,7 @@ class WaterMassBudget(WaterMassTransformations):
                 self.rho_ref*self.grid._ds[self.h_name].fillna(0.),
                 "Z",
                 target = self.grid._ds[self.target_coords["outer"]],
-                target_data = lam_i,
+                target_data = target_data,
                 method="conservative"
             )
             .rename({self.target_coords["outer"]: self.target_coords["center"]})
@@ -324,22 +344,25 @@ class WaterMassBudget(WaterMassTransformations):
         return self.wmt.overturning
         
     
-    def mass_tendency(self, lambda_name, greater_than=False):
-        ax = "Z" if "Z_bounds" not in self.grid.axes else "Z_bounds"
+    def mass_bounds(self, lambda_name, greater_than=False):
                 
         if "time_bounds" in self.grid._ds.dims:
-            self.grid._ds[f"{lambda_name}_i_bounds"] = (
-                self.grid.interp(self.grid._ds[f"{lambda_name}_bounds"], ax, boundary="extend")
-                .chunk({self.grid.axes[ax].coords['outer']: -1})
-                .rename(f"{lambda_name}_i_bounds")
-            )
-            
+            if self.prebinned:
+                target_data = self.grid._ds[f"{lambda_name}_i"]
+            else:
+                self.grid._ds[f"{lambda_name}_i_bounds"] = (
+                    self.grid.interp(self.grid._ds[f"{lambda_name}_bounds"], self.ax_bounds, boundary="extend")
+                    .chunk({self.grid.axes[self.ax_bounds].coords['outer']: -1})
+                    .rename(f"{lambda_name}_i_bounds")
+                )
+                target_data = self.grid._ds[f"{lambda_name}_i_bounds"]
+                
             self.grid._ds['mass_density_bounds'] = (
                 self.grid.transform(
                     self.rho_ref*self.grid._ds[f"{self.h_name}_bounds"].fillna(0.),
-                    ax,
+                    self.ax_bounds,
                     target = self.grid._ds[self.target_coords["outer"]],
-                    target_data = self.grid._ds[f"{lambda_name}_i_bounds"],
+                    target_data = target_data,
                     method="conservative"
                 )
                 .rename({self.target_coords["outer"]: self.target_coords["center"]})
@@ -386,58 +409,18 @@ class WaterMassBudget(WaterMassTransformations):
                 self.grid.axes['Y'].coords['center']
             ])
 
-            dt = self.grid._ds.time_bounds.diff('time_bounds').astype('float')*1.e-9
-            self.wmt['mass_tendency'] = lam_grid.interp(
-                (self.grid._ds[f'mass_bounds_{suffix}'].diff('time_bounds') / dt)
-                .rename({"time_bounds":"time"}).assign_coords({'time': self.grid._ds.time}),
+            self.wmt['mass_bounds'] = lam_grid.interp(
+                self.grid._ds[f'mass_bounds_{suffix}'],
                 "lam"
             ).assign_coords(
                 {self.target_coords["center"]: self.grid._ds[self.target_coords["center"]].values}
             )
-            self.wmt['dt'] = dt.rename({"time_bounds":"time"}).assign_coords({'time':self.grid._ds['time']})
-            self.wmt = self.wmt.assign_coords({"time_bounds": self.grid._ds["time_bounds"]})
-            return self.wmt.mass_tendency
 
-        else:
-            return
+        return
         
-    
-    def numerical_mixing(self):
-        Leibniz_material_derivative_terms = [
-            "mass_tendency",
-            "mass_source",
-            "overturning",
-        ]   
-        if all([term in self.wmt for term in Leibniz_material_derivative_terms]):
-            self.wmt["Leibniz_material_derivative"] = - (
-                self.wmt.mass_tendency -
-                self.wmt.mass_source -
-                self.wmt.overturning
-            )
-            # By construction, kinematic_material_derivative == process_material_derivative, so use whichever available
-            if "kinematic_material_derivative" in self.wmt:
-                self.wmt["spurious_numerical_mixing"] = (
-                    self.wmt.Leibniz_material_derivative -
-                    self.wmt.kinematic_material_derivative
-                )
-            elif "process_material_derivative" in self.wmt:
-                self.wmt["spurious_numerical_mixing"] = (
-                    self.wmt.Leibniz_material_derivative -
-                    self.wmt.process_material_derivative
-                )
-
-            if "advection" in self.wmt:
-                if "surface_ocean_flux_advective_negative_lhs" in self.wmt:
-                    self.wmt["advection_plus_BC"] = self.wmt.advection + self.wmt.surface_ocean_flux_advective_negative_lhs
-                else:
-                    self.wmt["advection_plus_BC"] = self.wmt.advection
-
-            if ("spurious_numerical_mixing" in self.wmt) and ("advection_plus_BC" in self.wmt):
-                self.wmt["diabatic_advection"] = self.wmt.advection_plus_BC + self.wmt.spurious_numerical_mixing
-
     def add_default_gridcoords(self, lam):
         lambda_name = self.get_lambda_var(lam)
-        if lam=="sigma2":
+        if "sigma" in lam:
             lam_min, lam_max, dlam = 0., 50., 0.1
             
         elif lam=="heat":
@@ -455,4 +438,60 @@ class WaterMassBudget(WaterMassTransformations):
             self.grid,
             {"Z_target": {"outer": f"{lambda_name}_i_target", "center": f"{lambda_name}_l_target"}},
             {"Z_target": "extend"}
-        )            
+        )
+        
+def mass_tendency(ds):
+    dt = ds.time_bounds.diff('time_bounds').astype('float')*1.e-9
+    if ds.time_bounds.size == ds.time.size:
+        time_target = ds.time[1:]
+        print("Warning: first value of `mass_tendency` may be NaN!")
+    elif ds.time_bounds.size == (ds.time.size + 1):
+        time_target = ds.time
+    else:
+        raise ValueError("time_bounds inconsistent with time")
+    ds['mass_tendency'] = (
+        ds.mass_bounds.diff('time_bounds') / dt
+    ).rename({"time_bounds":"time"}).assign_coords({'time': time_target})
+    ds['dt'] = dt.rename({"time_bounds":"time"}).assign_coords({'time':time_target})
+        
+def close_budget(ds):
+    Leibniz_material_derivative_terms = [
+        "mass_tendency",
+        "mass_source",
+        "overturning",
+    ]
+    if all([term in ds for term in Leibniz_material_derivative_terms]):
+        ds["Leibniz_material_derivative"] = - (
+            ds.mass_tendency -
+            ds.mass_source -
+            ds.overturning
+        )
+        # By construction, kinematic_material_derivative == process_material_derivative,
+        # so use whichever available
+        if "kinematic_material_derivative" in ds:
+            ds["spurious_numerical_mixing"] = (
+                ds.Leibniz_material_derivative -
+                ds.kinematic_material_derivative
+            )
+        elif "process_material_derivative" in ds:
+            ds["spurious_numerical_mixing"] = (
+                ds.Leibniz_material_derivative -
+                ds.process_material_derivative
+            )
+
+        if "advection" in ds:
+            if "surface_ocean_flux_advective_negative_lhs" in ds:
+                ds["advection_plus_BC"] = (
+                    ds.advection +
+                    ds.surface_ocean_flux_advective_negative_lhs
+                )
+            else:
+                ds["advection_plus_BC"] = ds.advection
+
+        if ("spurious_numerical_mixing" in ds) and ("advection_plus_BC" in ds):
+            ds["diabatic_advection"] = (
+                ds.advection_plus_BC +
+                ds.spurious_numerical_mixing
+            )
+    
+    return

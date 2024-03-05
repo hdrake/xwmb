@@ -1,11 +1,12 @@
 import xarray as xr
 import numpy as np
 from xgcm import Grid
+import xwmt
 
 sim = "wmt_incsurffluxes.natv_rho2_zstr.monthly_daily_hourly.13months"
 rootdir = f"/archive/Graeme.Macgilchrist/MOM6-examples/ice_ocean_SIS2/Baltic_OM4_025/{sim}/Baltic_OM4_025/"
 
-def load_baltic(gridname, dt):
+def load_baltic(gridname, dt, online_density=False):
     """
     Arguments:
     - gridname: str
@@ -29,6 +30,8 @@ def load_baltic(gridname, dt):
             filename = prefix+gridname+'_'+suffix+'_'+time+'.nc'
         dsnow = xr.open_mfdataset(rootdir+filename, decode_times=False)
         ds = xr.merge([ds,dsnow])
+        
+    time_attrs = ds.time.attrs.copy() # copy these to reaffirm them later
 
     # Load snapshot data (for mass tendency term)
     suffix = 'snap'
@@ -42,6 +45,9 @@ def load_baltic(gridname, dt):
     ds = ds.sel(time=ds['time'].values[ds_decoded['time'].sel(time=slice('1900-02-01 00', '1901-02-01 00'))['i'].values])
     snap = snap.sel(time=snap['time'].values[snap_decoded['time'].sel(time=slice('1900-02-01 00', '1901-02-01 00'))['i'].values])
 
+    ds = xr.decode_cf(ds)
+    snap = xr.decode_cf(snap)
+
     #  Load grid
     oceangridname = '19000101.ocean_static.nc'
     ocean_grid = xr.open_dataset(rootdir+oceangridname).squeeze()
@@ -51,13 +57,16 @@ def load_baltic(gridname, dt):
     ds = ds.rename({'temp':'thetao', "salt":'so'})
     snap = snap.rename({'temp':'thetao', "salt":'so'})
 
-    # Merge snapshots with time-averages
-    snap = snap.rename({
-        **{'time':'time_bounds'},
-        **{v:f"{v}_bounds" for v in snap.data_vars}
-    })
-    ds = xr.merge([ds, snap])
-
+    if gridname=="rho2":
+        ds = ds.assign_coords({
+            "sigma2_l": ds['rho2_l'] - 1000.,
+            "sigma2_i": ds['rho2_i'] - 1000.
+        }).swap_dims({'rho2_l':'sigma2_l', 'rho2_i':'sigma2_i'})
+        snap = snap.assign_coords({
+            "sigma2_l": snap['rho2_l'] - 1000.,
+            "sigma2_i": snap['rho2_i'] - 1000.
+        }).swap_dims({'rho2_l':'sigma2_l', 'rho2_i':'sigma2_i'})
+    
     # Add core coordinates of ocean_grid to ds
     ds = ds.assign_coords({
         "wet": xr.DataArray(ocean_grid["wet"].values, dims=('yh', 'xh',)),
@@ -83,17 +92,33 @@ def load_baltic(gridname, dt):
     # lon, lat variables required by gsw package for sea water equation thermodynamics
     ds['lon'] = ds.geolon
     ds['lat'] = ds.geolat
+    snap['lon'] = ds.lon
+    snap['lat'] = ds.lat
 
-    ds['sigma2_bounds'] = ds['rhopot2_bounds'] - 1000.
-    ds['sigma2'] = ds['rhopot2'] - 1000.
+    # Get density variables
+    coords = {'Z': {'center': f'{Zprefix}l', 'outer': f'{Zprefix}i'}}
+    wm_ds = xwmt.WaterMass(Grid(ds, coords=coords, metrics={}, boundary={"Z":"extend"}, autoparse_metadata=False))
+    wm_snap = xwmt.WaterMass(Grid(snap, coords=coords, metrics={}, boundary={"Z":"extend"}, autoparse_metadata=False))
+    
+    if online_density:
+        ds['sigma0'] = ds['rhopot0'] - 1000.
+        ds['sigma2'] = ds['rhopot2'] - 1000.
+        snap['sigma2'] = snap['rhopot2'] - 1000.
+    else:
+        ds['sigma0'] = wm_ds.get_density("sigma0")
+        ds['sigma2'] = wm_ds.get_density("sigma2")
+        snap['sigma2'] = wm_snap.get_density("sigma2")
+    snap['sigma0'] = wm_snap.get_density("sigma0")
 
-    if gridname=="rho2":
-        ds = ds.assign_coords({
-            "sigma2_l": ds['rho2_l'] - 1000.,
-            "sigma2_i": ds['rho2_i'] - 1000.
-        }).swap_dims({'rho2_l':'sigma2_l', 'rho2_i':'sigma2_i'})
-        
-    ds = xr.decode_cf(ds)
+    # Merge snapshots with time-averages
+    snap = snap.rename({
+        **{'time':'time_bounds'},
+        **{v:f"{v}_bounds" for v in snap.data_vars}
+    })
+    ds.time.attrs = time_attrs
+    snap.time_bounds.attrs = ds.time.attrs
+
+    ds = xr.merge([ds, snap])
 
     # z-coordinate dataset containing basic state variables
     coords = {
