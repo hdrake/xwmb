@@ -12,8 +12,9 @@ mass:
         var: null
         product:
           var: null
-          thickness_tendency: "boundary_forcing_h_tendency" # time-mean
+          thickness_tendency: "boundary_forcing_h_tendency"
           density: 1035.
+          area: "areacello"
 
 heat:
   # regrid all diagnostics to thetao coordinate online or output high-frequency time-mean for offline regridding
@@ -27,9 +28,24 @@ heat:
         var: null
         sum:
           var: null
-          lateral: "opottemppmdiff" # time-mean
-          interfacial: "opottempdiff" # time-mean
-      surface_exchange_flux: "boundary_forcing_heat_tendency" # time-mean
+          lateral:
+            var: null
+            product:
+              var: null
+              tracer_content_tendency_per_unit_area: "opottemppmdiff"
+              area: "areacello"
+          interfacial:
+            var: null
+            product:
+              var: null
+              tracer_content_tendency_per_unit_area: "opottempdiff"
+              area: "areacello"
+      surface_exchange_flux:
+        var:
+        product:
+          var: null
+          tracer_content_tendency_per_unit_area: "boundary_forcing_heat_tendency"
+          area: "areacello"
       surface_ocean_flux_advective_negative_rhs:
         var: null
         product:
@@ -39,8 +55,19 @@ heat:
           lambda_mass: "tos" # time-mean
           thickness_tendency: "boundary_forcing_h_tendency" # time-mean
           density: 1035.
-      bottom_flux: "internal_heat_heat_tendency" # time-mean
-      frazil_ice: "frazil_heat_tendency" # time-mean
+          area: "areacello"
+      bottom_flux:
+        var: null
+        product:
+          var: null
+          tracer_content_tendency_per_unit_area: "internal_heat_heat_tendency"
+          area: "areacello"
+      frazil_ice:
+        var: null
+        product:
+          var: null
+          tracer_content_tendency_per_unit_area: "frazil_heat_tendency"
+          area: "areacello"
 
 salt:
   lambda: "so" # time-mean and bounding snapshots
@@ -53,15 +80,31 @@ salt:
         var: null
         sum:
           var: null
-          lateral: "osaltpmdiff" # time-mean
-          interfacial: "osaltdiff" # time-mean
-      surface_exchange_flux: "boundary_forcing_salt_tendency" # time-mean
+          lateral:
+            var: null
+            product:
+              var: null
+              tracer_content_tendency_per_unit_area: "osaltpmdiff"
+              area: "areacello"
+          interfacial:
+            var: null
+            product:
+              var: null
+              tracer_content_tendency_per_unit_area: "osaltdiff"
+              area: "areacello"
+      surface_exchange_flux:
+        var:
+        product:
+          var: null
+          tracer_content_tendency_per_unit_area: "boundary_forcing_salt_tendency"
+          area: "areacello"
       surface_ocean_flux_advective_negative_rhs:
         var: null
         product:
           var: null
           sign: -1.
           unit_conversion: 0.001
-          lambda_mass: "sos" # time-mean
-          thickness_tendency: "boundary_forcing_h_tendency" # time-mean
+          lambda_mass: "sos"
+          thickness_tendency: "boundary_forcing_h_tendency"
           density: 1035.
+          area: "areacello"

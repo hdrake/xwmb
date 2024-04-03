@@ -66,7 +66,7 @@ class WaterMassBudget(WaterMassTransformations):
             ).regions[0]
             self.assert_zero_transport = True
 
-    def mass_budget(self, lam, greater_than=False, default_bins=False, drop_sections=False):
+    def mass_budget(self, lam, greater_than=False, integrate=True, along_section=False, default_bins=False):
         lambda_name = self.get_lambda_var(lam)
         target_coords = {"center": f"{lambda_name}_l_target", "outer": f"{lambda_name}_i_target"}
         if default_bins:
@@ -112,22 +112,27 @@ class WaterMassBudget(WaterMassTransformations):
             for c in [f"{lambda_name}_l", f"{lambda_name}_i"]
         ])
         
-        self.wmt = self.transformations(lam, greater_than=greater_than)
-        self.mass_bounds(lambda_name, greater_than=greater_than)
-        self.convergent_transport(lambda_name, greater_than=greater_than, drop_sections=drop_sections)
+        self.wmt = self.transformations(lam, integrate=integrate, greater_than=greater_than)
+        self.mass_bounds(lambda_name, integrate=integrate, greater_than=greater_than)
+        self.convergent_transport(lambda_name, integrate=integrate, greater_than=greater_than, along_section=along_section)
         mass_tendency(self.wmt)
         close_budget(self.wmt)
         return self.wmt
         
-    def transformations(self, lam, greater_than=False):
+    def transformations(self, lam, integrate=True, greater_than=False):
         lambda_name = self.get_lambda_var(lam)
-        wmt = self.integrate_transformations(
-            lam,
-            bins=self.grid._ds[self.target_coords["outer"]],
-            mask=self.region.mask,
-            group_processes=True,
-            sum_components=True
-        ).assign_coords({
+        kwargs = {
+            "bins": self.grid._ds[self.target_coords["outer"]],
+            "mask": self.region.mask,
+            "group_processes": True,
+            "sum_components": True
+        }
+        if integrate:
+            wmt = self.integrate_transformations(lam, **kwargs)
+        else:
+            wmt = self.map_transformations(lam, **kwargs)
+            
+        wmt = wmt.assign_coords({
             self.target_coords["center"]: self.grid._ds[self.target_coords["center"]],
             self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]],
         })
@@ -149,29 +154,32 @@ class WaterMassBudget(WaterMassTransformations):
         
         return wmt
         
-    def convergent_transport(self, lambda_name, greater_than=False, drop_sections=False):
+    def convergent_transport(self, lambda_name, integrate=True, greater_than=False, along_section=False):
         kwargs = {
             "layer":     self.grid.axes["Z"].coords['center'],
             "interface": self.grid.axes["Z"].coords['outer'],
             "geometry":  "spherical"
         }
+        if not(integrate) and along_section:
+            raise ValueError("Cannot have both `integrate=False` and `along_section=True`.")
+            
         if not self.assert_zero_transport:
             lateral_transports = self.full_budgets_dict['mass']['rhs']['sum']['advection']['sum']['lateral']
-            preferred_derived = [e for e in list(lateral_transports.keys()) if e!="var"][0]
-            
-            
-            if (preferred_derived=="sum"):
-                if "sum" in lateral_transports:
-                    kwargs = {**kwargs, **{
+            if "sum" in lateral_transports:
+                kwargs = {**kwargs, **{
                         f"{di_shorthand}tr":
                         lateral_transports['sum'][f'{di}_convergence']['product'][f'{di}_divergence']['difference'][f'{di}_mass_transport']
                         for (di, di_shorthand) in zip(["zonal", "meridional"], ["u", "v"])
                     }}
-                    surface_integral_condition = np.all([kwargs[f"{di_shorthand}tr"] in self.grid._ds for di_shorthand in ["u", "v"]])
-                    if not surface_integral_condition:
-                        raise ValueError("Lateral transports not available!")
-                        
-                    self.grid._ds['conv'] = sectionate.convergent_transport(
+                surface_integral_condition = np.all(
+                    [kwargs[f"{di_shorthand}tr"] in self.grid._ds
+                     for di_shorthand in ["u", "v"]]
+                )
+                if not surface_integral_condition:
+                    raise ValueError("Lateral transports are not available in `ds`!")
+                    
+                if along_section: # compute normal transports using sectionate
+                    self.grid._ds['convergent_mass_transport_original'] = sectionate.convergent_transport(
                         self.grid,
                         self.region.i,
                         self.region.j,
@@ -196,29 +204,63 @@ class WaterMassBudget(WaterMassTransformations):
                         )
                         target_data = self.grid._ds[f'{lambda_name}_i_sect']
 
-            elif (preferred_derived=="product"): # compute as volume integral instead
-                self.grid._ds['conv'] = self.grid._ds[lateral_transports["product"]["var"]] * self.region.mask
-                if self.prebinned:
-                    target_data = self.grid._ds[f'{lambda_name}_i']
-                else:
-                    self.grid._ds[f'{lambda_name}_i'] = (
-                        self.grid.interp(self.grid._ds[lambda_name], "Z", boundary="extend")
-                        .chunk({self.grid.axes['Z'].coords['outer']: -1})
-                        .rename(f'{lambda_name}_i')
+                    self.grid._ds['convergent_mass_transport_layer'] = (
+                        self.grid.transform(
+                            self.grid._ds['convergent_mass_transport_original'].fillna(0.),
+                            "Z",
+                            target = self.grid._ds[self.target_coords["outer"]],
+                            target_data = target_data,
+                            method="conservative"
+                        )
+                        .rename({self.target_coords["outer"]: self.target_coords["center"]})
+                        .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
                     )
-                    target_data = self.grid._ds[f'{lambda_name}_i']
 
-            self.grid._ds['convergent_mass_transport'] = (
-                self.grid.transform(
-                    self.grid._ds['conv'].fillna(0.),
-                    "Z",
-                    target = self.grid._ds[self.target_coords["outer"]],
-                    target_data = target_data,
-                    method="conservative"
-                )
-                .rename({self.target_coords["outer"]: self.target_coords["center"]})
-                .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
-            )
+                elif not(along_section): # compute normal transports for each grid cell then sum
+                    if self.prebinned:
+                        lam_itpXZ = self.grid._ds[f'{lambda_name}_i']
+                        lam_itpYZ = self.grid._ds[f'{lambda_name}_i']
+                        
+                    else:
+                        lam_itpXZ = self.grid.interp(
+                            self.grid.interp(self.grid._ds[lambda_name], "X"),
+                            "Z",
+                            boundary="extend"
+                        ).chunk({self.grid.axes['Z'].coords['outer']: -1})
+                        lam_itpYZ = self.grid.interp(
+                            self.grid.interp(self.grid._ds[lambda_name], "Y"),
+                            "Z",
+                            boundary="extend"
+                        ).chunk({self.grid.axes['Z'].coords['outer']: -1})
+
+                    divergence_X = self.grid.diff(
+                        self.grid.transform(
+                            self.grid._ds[kwargs['utr']].fillna(0.),
+                            "Z",
+                            target = self.grid._ds[self.target_coords["outer"]],
+                            target_data = lam_itpXZ,
+                            method="conservative"
+                        ).fillna(0.)
+                        .rename({self.target_coords["outer"]: self.target_coords["center"]})
+                        .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]}),
+                        "X"
+                    )
+                    divergence_Y = self.grid.diff(
+                        self.grid.transform(
+                            self.grid._ds[kwargs['vtr']].fillna(0.),
+                            "Z",
+                            target = self.grid._ds[self.target_coords["outer"]],
+                            target_data = lam_itpYZ,
+                            method="conservative"
+                        ).fillna(0.)
+                        .rename({self.target_coords["outer"]: self.target_coords["center"]})
+                        .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]}),
+                        "Y"
+                    )
+                    
+                    self.grid._ds['convergent_mass_transport_layer'] = -(
+                        divergence_X + divergence_Y
+                    ) * self.region.mask
             
             suffix = 'greater_than' if greater_than else 'less_than'
             lam_grid = Grid(
@@ -239,7 +281,7 @@ class WaterMassBudget(WaterMassTransformations):
                     autoparse_metadata=False
                 )
                 self.grid._ds[f'convergent_mass_transport_{suffix}'] = lam_rev_grid.cumsum(
-                    self.grid._ds['convergent_mass_transport'], "lam", boundary="fill", fill_value=0.
+                    self.grid._ds['convergent_mass_transport_layer'], "lam", boundary="fill", fill_value=0.
                 ).chunk({self.target_coords["outer"]: -1})
                 self.grid._ds = self.grid._ds.sel({
                     self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]][::-1],
@@ -247,7 +289,7 @@ class WaterMassBudget(WaterMassTransformations):
                 })
             else:
                 self.grid._ds[f'convergent_mass_transport_{suffix}'] = lam_grid.cumsum(
-                    self.grid._ds['convergent_mass_transport'], "lam", boundary="fill", fill_value=0.
+                    self.grid._ds['convergent_mass_transport_layer'], "lam", boundary="fill", fill_value=0.
                 ).chunk({self.target_coords["outer"]: -1}).assign_coords(
                     {self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]]}
                 )
@@ -305,10 +347,13 @@ class WaterMassBudget(WaterMassTransformations):
                 self.grid._ds.mass_source_density, "lam", boundary="fill", fill_value=0.
             ).chunk({self.target_coords["outer"]: -1})
 
-        self.grid._ds[f'mass_source_{suffix}'] = (self.grid._ds[f'mass_source_density_{suffix}']).sum([
-            self.grid.axes['X'].coords['center'],
-            self.grid.axes['Y'].coords['center']
-        ])
+        if integrate:
+            self.grid._ds[f'mass_source_{suffix}'] = (self.grid._ds[f'mass_source_density_{suffix}']).sum([
+                self.grid.axes['X'].coords['center'],
+                self.grid.axes['Y'].coords['center']
+            ])
+        else:
+            self.grid._ds[f'mass_source_{suffix}'] = self.grid._ds[f'mass_source_density_{suffix}']
         
         # Compute layer mass
         self.grid._ds['mass_density'] = (self.grid.transform(
@@ -325,10 +370,12 @@ class WaterMassBudget(WaterMassTransformations):
         self.wmt['layer_mass'] = (
             self.grid._ds['mass_density'] *
             self.grid.get_metric(self.grid._ds['mass_density'], ("X", "Y"))
-        ).sum([
-            self.grid.axes['X'].coords['center'],
-            self.grid.axes['Y'].coords['center']
-        ])
+        )
+        if integrate:
+            self.wmt['layer_mass'] = self.wmt['layer_mass'].sum([
+                self.grid.axes['X'].coords['center'],
+                self.grid.axes['Y'].coords['center']
+            ])
         
         # interpolate terms onto tracer levels
         lam_grid = Grid(
@@ -351,23 +398,26 @@ class WaterMassBudget(WaterMassTransformations):
                 "lam",
                 boundary="extend"
             )
-            if "sect" in self.grid._ds[f'convergent_mass_transport_{suffix}'].dims:
-                total_convergent_transport = convergent_transport.sum("sect")
+            if integrate:
+                if "sect" in self.grid._ds[f'convergent_mass_transport_{suffix}'].dims:
+                    self.wmt['convergent_mass_transport'] = convergent_transport.sum("sect")
+                else:
+                    area_dims = list(self.grid.get_metric(convergent_transport, ("X", "Y")).dims)
+                    self.wmt['convergent_mass_transport'] = convergent_transport.sum(area_dims)
             else:
-                total_convergent_transport = convergent_transport.sum(list(self.grid.get_metric(convergent_transport, ("X", "Y")).dims))
-            self.wmt['overturning'] = total_convergent_transport.assign_coords(
-                {self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]}
-            )
-            if drop_sections:
-                self.grid._ds = self.grid._ds.drop_dims("sect")
+                self.wmt['convergent_mass_transport'] = convergent_transport
+            
+            self.wmt = self.wmt.assign_coords(
+                    {self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]}
+                )
             
         else:
-            self.wmt['overturning'] = xr.zeros_like(self.wmt['mass_source'])
+            self.wmt['convergent_mass_transport'] = xr.zeros_like(self.wmt['mass_source'])
         
-        return self.wmt.overturning
+        return self.wmt.convergent_mass_transport
         
     
-    def mass_bounds(self, lambda_name, greater_than=False):
+    def mass_bounds(self, lambda_name, integrate=True, greater_than=False):
                 
         if "time_bounds" in self.grid._ds.dims:
             if self.prebinned:
@@ -427,15 +477,23 @@ class WaterMassBudget(WaterMassTransformations):
             self.grid._ds[f'mass_bounds_{suffix}'] = (
                 self.grid._ds[f'mass_density_bounds_{suffix}'] *
                 self.grid.get_metric(self.grid._ds[f"{lambda_name}_bounds"], ("X", "Y"))
-            ).sum([
-                self.grid.axes['X'].coords['center'],
-                self.grid.axes['Y'].coords['center']
-            ])
-
-            self.wmt['mass_bounds'] = lam_grid.interp(
-                self.grid._ds[f'mass_bounds_{suffix}'],
-                "lam"
-            ).assign_coords(
+            )
+            
+            if integrate:
+                self.wmt['mass_bounds'] = lam_grid.interp(
+                    self.grid._ds[f'mass_bounds_{suffix}'],
+                    "lam"
+                ).sum([
+                    self.grid.axes['X'].coords['center'],
+                    self.grid.axes['Y'].coords['center']
+                ])
+            else:
+                self.wmt['mass_bounds'] = lam_grid.interp(
+                    self.grid._ds[f'mass_bounds_{suffix}'],
+                    "lam"
+                )
+            
+            self.wmt['mass_bounds'] = self.wmt['mass_bounds'].assign_coords(
                 {self.target_coords["center"]: self.grid._ds[self.target_coords["center"]].values}
             )
 
@@ -481,13 +539,13 @@ def close_budget(ds):
     Leibniz_material_derivative_terms = [
         "mass_tendency",
         "mass_source",
-        "overturning",
+        "convergent_mass_transport",
     ]
     if all([term in ds for term in Leibniz_material_derivative_terms]):
         ds["Leibniz_material_derivative"] = - (
             ds.mass_tendency -
             ds.mass_source -
-            ds.overturning
+            ds.convergent_mass_transport
         )
         # By construction, kinematic_material_derivative == process_material_derivative,
         # so use whichever available

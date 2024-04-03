@@ -54,7 +54,7 @@ def main(argv):
             lam = lamopt
 
         budgets_dict = xbudget.load_preset_budget(model="MOM6_3Donly")
-        xbudget.collect_budgets(grid._ds, budgets_dict)
+        xbudget.collect_budgets(grid, budgets_dict)
         simple_budget = xbudget.aggregate(budgets_dict)
 
         # Note: the properties of this region are quite different from the rest of the Baltic!
