@@ -271,8 +271,8 @@ class WaterMassBudget(WaterMassTransformations):
             )
             if greater_than:
                 self.grid._ds = self.grid._ds.sel({
-                    self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]][::-1],
-                    self.target_coords["center"]: self.grid._ds[self.target_coords["center"]][::-1],
+                    self.target_coords["outer"]:  slice(None, None, -1),
+                    self.target_coords["center"]: slice(None, None, -1)
                 })
                 lam_rev_grid = Grid(
                     self.grid._ds,
@@ -283,9 +283,9 @@ class WaterMassBudget(WaterMassTransformations):
                 self.grid._ds[f'convergent_mass_transport_{suffix}'] = lam_rev_grid.cumsum(
                     self.grid._ds['convergent_mass_transport_layer'], "lam", boundary="fill", fill_value=0.
                 ).chunk({self.target_coords["outer"]: -1})
-                self.grid._ds = self.grid._ds.sel({
-                    self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]][::-1],
-                    self.target_coords["center"]: self.grid._ds[self.target_coords["center"]][::-1],
+                self.grid._ds = self.grid._ds.isel({
+                    self.target_coords["outer"]:  slice(None, None, -1),
+                    self.target_coords["center"]: slice(None, None, -1),
                 })
             else:
                 self.grid._ds[f'convergent_mass_transport_{suffix}'] = lam_grid.cumsum(
@@ -325,9 +325,9 @@ class WaterMassBudget(WaterMassTransformations):
             autoparse_metadata=False
         )
         if greater_than:
-            self.grid._ds = self.grid._ds.sel({
-                self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]][::-1],
-                self.target_coords["center"]: self.grid._ds[self.target_coords["center"]][::-1],
+            self.grid._ds = self.grid._ds.isel({
+                self.target_coords["outer"]:  slice(None, None, -1),
+                self.target_coords["center"]: slice(None, None, -1)
             })
             lam_rev_grid = Grid(
                 self.grid._ds,
@@ -338,9 +338,9 @@ class WaterMassBudget(WaterMassTransformations):
             self.grid._ds[f'mass_source_density_{suffix}'] = lam_rev_grid.cumsum(
                 self.grid._ds.mass_source_density, "lam", boundary="fill", fill_value=0.
             ).chunk({self.target_coords["outer"]: -1})
-            self.grid._ds = self.grid._ds.sel({
-                self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]][::-1],
-                self.target_coords["center"]: self.grid._ds[self.target_coords["center"]][::-1],
+            self.grid._ds = self.grid._ds.isel({
+                self.target_coords["outer"]:  slice(None, None, -1),
+                self.target_coords["center"]: slice(None, None, -1)
             })
         else:
             self.grid._ds[f'mass_source_density_{suffix}'] = lam_grid.cumsum(
@@ -399,7 +399,8 @@ class WaterMassBudget(WaterMassTransformations):
                 boundary="extend"
             )
             if integrate:
-                if "sect" in self.grid._ds[f'convergent_mass_transport_{suffix}'].dims:
+                if "sect" in convergent_transport.dims:
+                    self.grid._ds['convergent_mass_transport_along'] = convergent_transport
                     self.wmt['convergent_mass_transport'] = convergent_transport.sum("sect")
                 else:
                     area_dims = list(self.grid.get_metric(convergent_transport, ("X", "Y")).dims)
@@ -450,9 +451,9 @@ class WaterMassBudget(WaterMassTransformations):
                 autoparse_metadata=False
             )
             if greater_than:
-                self.grid._ds = self.grid._ds.sel({
-                    self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]][::-1],
-                    self.target_coords["center"]: self.grid._ds[self.target_coords["center"]][::-1],
+                self.grid._ds = self.grid._ds.isel({
+                    self.target_coords["outer"]:  slice(None, None, -1),
+                    self.target_coords["center"]: slice(None, None, -1),
                 })
                 lam_rev_grid = Grid(
                     self.grid._ds,
@@ -463,9 +464,9 @@ class WaterMassBudget(WaterMassTransformations):
                 self.grid._ds[f'mass_density_bounds_{suffix}'] = lam_rev_grid.cumsum(
                     self.grid._ds.mass_density_bounds, "lam", boundary="fill", fill_value=0.
                 ).chunk({self.target_coords["outer"]: -1})
-                self.grid._ds = self.grid._ds.sel({
-                    self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]][::-1],
-                    self.target_coords["center"]: self.grid._ds[self.target_coords["center"]][::-1],
+                self.grid._ds = self.grid._ds.isel({
+                    self.target_coords["outer"]:  slice(None, None, -1),
+                    self.target_coords["center"]: slice(None, None, -1),
                 })
             else:
                 self.grid._ds[f'mass_density_bounds_{suffix}'] = lam_grid.cumsum(
