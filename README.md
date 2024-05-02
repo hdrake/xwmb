@@ -8,6 +8,8 @@
 
 Documentation is not yet available, but the core API is illustrated in the example notebooks here and in each of the dependency packages.
 
+If you use `xwmb`, please cite the companion manuscript: Henri Francois Drake, Shanice Bailey, Raphael Dussin, et al. Water Mass Transformation Budgets in Finite-Volume Generalized Vertical Coordinate Ocean Models. ESS Open Archive . April 11, 2024. DOI: [10.22541/essoar.171284935.57181910/v1]([url](https://doi.org/10.22541/essoar.171284935.57181910/v1))
+
 Quick Start Guide
 -----------------
 
