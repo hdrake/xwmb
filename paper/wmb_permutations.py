@@ -58,9 +58,9 @@ def main(argv):
         simple_budget = xbudget.aggregate(budgets_dict)
 
         # Note: the properties of this region are quite different from the rest of the Baltic!
-        name = "intBaltic"
-        lons = np.array([8.,   20.,  29., 24.5, 24.5, 26.1, 17.5, 11.5])
-        lats = np.array([53.5, 53.5, 54.5,  59.,  61.,  63., 64.5,  62.])
+        name = "Baltic"
+        lons = np.array([13, 10, 9.0, 10., 12, 20.,  29., 24.5, 23.5, 22.5, 17.5])
+        lats = np.array([58, 57.5, 56, 54, 53.5, 53.5, 54.5,  59.,  61.,  63., 64.5])
         region = regionate.GriddedRegion(name, lons, lats, grid)
 
         with warnings.catch_warnings():
