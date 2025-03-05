@@ -292,7 +292,7 @@ class WaterMassBudget(WaterMassTransformations):
                         target_data = self.grid._ds[f'{lambda_var}_i']
                     else:
                         self.grid._ds[f'{lambda_var}_sect'] = sectionate.extract_tracer(
-                            lambda_name,
+                            lambda_var,
                             self.grid,
                             self.region.i,
                             self.region.j,
@@ -324,12 +324,12 @@ class WaterMassBudget(WaterMassTransformations):
                         
                     else:
                         lam_itpXZ = self.grid.interp(
-                            self.grid.interp(self.grid._ds[lambda_name], "X"),
+                            self.grid.interp(self.grid._ds[lambda_var], "X"),
                             "Z",
                             boundary="extend"
                         ).chunk({self.grid.axes['Z'].coords['outer']: -1})
                         lam_itpYZ = self.grid.interp(
-                            self.grid.interp(self.grid._ds[lambda_name], "Y"),
+                            self.grid.interp(self.grid._ds[lambda_var], "Y"),
                             "Z",
                             boundary="extend"
                         ).chunk({self.grid.axes['Z'].coords['outer']: -1})
