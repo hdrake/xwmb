@@ -1,0 +1,16 @@
+name: test_env_xwmb
+channels:
+  - conda-forge
+dependencies:
+  - black
+  - gsw
+  - netcdf4
+  - numba
+  - numpy
+  - pandas
+  - pip
+  - pylint
+  - python==3.10
+  - pytest
+  - xarray
+  - xhistogram
