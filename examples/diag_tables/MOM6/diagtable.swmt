@@ -1,0 +1,43 @@
+# WMT 3D, monthly, horizontal resolution
+# 
+# This file contains a list of diagnostics for calculation of
+# surface watermass transformations (in potential density,
+# conservative temperature, or absolute salinity space),
+# at monthly resolution.
+# 
+# Date: 03/31/2025
+# Contact:      Henri F. Drake, henri.drake@noaa.gov
+#               Graeme MacGilchrist, graeme.macgilchrist@noaa.gov
+#               Stephen Griffies, stephen.griffies@noaa.gov
+#               Jan-Erik Tesdal, jt7058@princeton.edu
+#               John Krasting, john.krasting@noaa.gov
+
+### file formats
+"ocean_monthly",        1, "months", 1, "days", "time"
+
+# SURFACE OCEAN FIELDS, saved monthly
+### state variables at surface (required to convert freshwater flux into salt and heat tendencies)
+"ocean_model",  "tos",                                  "tos",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "sos",                                  "sos",                                  "ocean_monthly",        "all", "mean", "none",2
+# Ideally, also potrho2 at the surface; if not available, estimate it offline using tos and sos.
+
+### surface heat fluxes
+"ocean_model",  "hfds",                                  "hfds",                                   "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "hflso",                                 "hflso",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "hfsso",                                 "hfsso",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "rsntds",                                "rsntds",                                 "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "rlntds",                                "rlntds",                                 "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "heat_content_surfwater",                "heat_content_surfwater",                 "ocean_monthly",        "all", "mean", "none", 2
+
+### surface salt fluxes
+"ocean_model", "sfdsi"             	, "sfdsi"             	, "ocean_annual", "all", "mean", "none", 2
+
+### surface freshwater fluxes
+"ocean_model",  "wfo",                                   "wfo",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "prlq",                                  "prlq",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "prsn",                                  "prsn",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "evs",                                   "evs",                                   "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "fsitherm",                              "fsitherm",                              "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "friver",                                "friver",                                "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "ficeberg",                              "ficeberg",                              "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "vprec",                                 "vprec",                                 "ocean_monthly",        "all", "mean", "none",2

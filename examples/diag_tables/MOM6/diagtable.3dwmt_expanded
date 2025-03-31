@@ -1,0 +1,100 @@
+# WMT 3D, monthly, horizontal resolution
+# 
+# This file contains a comprehensive list of diagnostics for calculation of
+# watermass transformations (in density space) at monthly resolution.
+# Date: 03/31/2025
+# Contact:      Henri F. Drake, henri.drake@noaa.gov
+#               Graeme MacGilchrist, graeme.macgilchrist@noaa.gov
+#               Stephen Griffies, stephen.griffies@noaa.gov
+#               Jan-Erik Tesdal, jt7058@princeton.edu
+#               John Krasting, john.krasting@noaa.gov
+
+### file formats
+"ocean_monthly",        1, "months", 1, "days", "time"
+"ocean_month_rho2",       1, "months", 1, "days", "time"
+"ocean_month_rho2_snap",     1, "months", 1, "days", "time"
+
+# SURFACE OCEAN FIELDS, saved monthly
+### state variables at surface (required to convert freshwater flux into salt and heat tendencies)
+"ocean_model",  "tos",                                  "tos",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "sos",                                  "sos",                                  "ocean_monthly",        "all", "mean", "none",2
+
+### surface heat fluxes
+"ocean_model",  "hfds",                                  "hfds",                                   "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "hflso",                                 "hflso",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "hfsso",                                 "hfsso",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "rsntds",                                "rsntds",                                 "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "rlntds",                                "rlntds",                                 "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "heat_content_surfwater",                "heat_content_surfwater",                 "ocean_monthly",        "all", "mean", "none", 2
+
+### penetrative shortwave heat fluxes (and their convergence)
+"ocean_model_rho2",      "rsdo",                                  "rsdo",                              "ocean_month_rho2",   "all", "mean", "none",2
+"ocean_model_rho2",      "rsdoabsorb",                            "rsdoabsorb",                        "ocean_month_rho2",   "all", "mean", "none",2
+
+### surface salt fluxes
+"ocean_model", "sfdsi"             	, "sfdsi"             	, "ocean_annual", "all", "mean", "none", 2
+
+### surface freshwater fluxes
+"ocean_model",  "wfo",                                   "wfo",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "prlq",                                  "prlq",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "prsn",                                  "prsn",                                  "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "evs",                                   "evs",                                   "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "fsitherm",                              "fsitherm",                              "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "friver",                                "friver",                                "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "ficeberg",                              "ficeberg",                              "ocean_monthly",        "all", "mean", "none",2
+"ocean_model",  "vprec",                                 "vprec",                                 "ocean_monthly",        "all", "mean", "none",2
+
+# INTERIOR OCEAN FIELDS, saved monthly on rho2 grid
+# water mass state variable (required)
+"ocean_model_rho2",      "thkcello",                          "thkcello",                      "ocean_month_rho2",   "all", "mean", "none",2
+
+### other state variables (for offline transformations to (T,S) space)
+"ocean_model_rho2",      "temp",                              "temp",                          "ocean_month_rho2",   "all", "mean", "none",2
+"ocean_model_rho2",      "salt",                              "salt",                          "ocean_month_rho2",   "all", "mean", "none",2
+
+### heat, salt, and mass tendencies
+# heat tendencies (required for material WMTs)
+"ocean_model_rho2", "opottemppmdiff",                      "opottemppmdiff",                       "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "opottempdiff",                        "opottempdiff",                         "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "boundary_forcing_heat_tendency",      "boundary_forcing_heat_tendency",       "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "frazil_heat_tendency",                "frazil_heat_tendency",                 "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "internal_heat_heat_tendency",         "internal_heat_heat_tendency",          "ocean_month_rho2",        "all", "mean", "none",2
+# heat tendencies (optional; to fully close budgets)
+"ocean_model_rho2", "opottemptend",                        "opottemptend",                         "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "Th_tendency_vert_remap",              "Th_tendency_vert_remap",               "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "T_advection_xy",                      "T_advection_xy",                       "ocean_month_rho2",        "all", "mean", "none",2
+
+# salt tendencies (required)
+"ocean_model_rho2", "osaltpmdiff",                         "osaltpmdiff",                          "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "osaltdiff",                           "osaltdiff",                            "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "boundary_forcing_salt_tendency",      "boundary_forcing_salt_tendency",       "ocean_month_rho2",        "all", "mean", "none",2
+# salt tendencies (optional; to fully close budgets)
+"ocean_model_rho2", "osalttend",                           "osalttend",                            "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "Sh_tendency_vert_remap",              "Sh_tendency_vert_remap",               "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "S_advection_xy",                      "S_advection_xy",                       "ocean_month_rho2",        "all", "mean", "none",2
+
+# thickness tendencies (required)
+"ocean_model_rho2", "boundary_forcing_h_tendency",         "boundary_forcing_h_tendency",          "ocean_month_rho2",        "all", "mean", "none",2
+# thickness tendencies (optional; to fully close budgets)
+"ocean_model_rho2", "dhdt",                                "dhdt",                                 "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "dynamics_h_tendency",                 "dynamics_h_tendency",                  "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "vert_remap_h_tendency",               "vert_remap_h_tendency",                "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "internal_heat_h_tendency",            "internal_heat_h_tendency",             "ocean_month_rho2",        "all", "mean", "none",2
+
+### mass transports (for overturning term)
+# mass transport for residual mean velocity
+"ocean_model_rho2",           "umo",                 "umo",                  "ocean_month_rho2",           "all", "mean", "none",2
+"ocean_model_rho2",           "vmo",                 "vmo",                  "ocean_month_rho2",           "all", "mean", "none",2
+
+### heat and salt transport by residual mean advection
+# Optional; not actually required for WMT calculations, but closely related
+"ocean_model_rho2", "T_adx",                 "T_adx",                  "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "T_ady",                 "T_ady",                  "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "S_adx",                 "S_adx",                  "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "S_ady",                 "S_ady",                  "ocean_month_rho2",        "all", "mean", "none",2
+
+### snapshots (required for closing layer-wise mass budgets)
+"ocean_model_rho2", "thkcello",                            "thkcello",                             "ocean_month_rho2_snap",   "all", "none", "none",2
+### state variables (optional; for offline calculation of transformations in (T,S) space)
+"ocean_model_rho2", "temp",                              "temp",                               "ocean_month_rho2_snap",   "all", "none", "none",2
+"ocean_model_rho2", "salt",                              "salt",                               "ocean_month_rho2_snap",   "all", "none", "none",2
