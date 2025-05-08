@@ -1,0 +1,59 @@
+# WMT for marine heatwaves, with three-day temporal resolution
+# 
+# This file contains a comprehensive list of diagnostics for calculation of
+# watermass transformations (in temperature coordinates) using offline
+# regridding of depth-binned diagnostics at three-day temporal resolution.
+# Date: 05/08/2025
+# Contact:      Henri F. Drake, henri.drake@noaa.gov
+
+### file formats
+"ocean_daily", 1, "days", 1, "days", "time", 1, "years"
+"ocean_threeday", 3, "days", 1, "days", "time", 1, "years"
+"ocean_threeday_zup", 3, "days", 1, "days", "time", 1, "years"
+"ocean_threeday_zup_snap", 3, "days", 1, "days", "time", 1, "years"
+
+# SURFACE OCEAN FIELDS, saved at three-day resolution
+### state variables at surface (required to convert freshwater flux into salt and heat tendencies)
+"ocean_model",  "tos",                                     "tos",                                  "ocean_threeday",           "all", "mean", "none",2
+"ocean_model",  "sos",                                     "sos",                                  "ocean_threeday",           "all", "mean", "none",2
+
+### surface heat fluxes
+"ocean_model",  "hfds",                                  "hfds",                                   "ocean_threeday",        "all", "mean", "none",2
+"ocean_model",  "hflso",                                 "hflso",                                  "ocean_threeday",        "all", "mean", "none",2
+"ocean_model",  "hfsso",                                 "hfsso",                                  "ocean_threeday",        "all", "mean", "none",2
+"ocean_model",  "rsntds",                                "rsntds",                                 "ocean_threeday",        "all", "mean", "none",2
+"ocean_model",  "rlntds",                                "rlntds",                                 "ocean_threeday",        "all", "mean", "none",2
+"ocean_model",  "heat_content_surfwater",                "heat_content_surfwater",                 "ocean_threeday",        "all", "mean", "none", 2
+
+# INTERIOR OCEAN FIELDS, binned by upper ocean depth level
+# water mass state variable (required)
+"ocean_model_zup", "thkcello",                            "thkcello",                              "ocean_threeday_zup",     "all", "mean", "none",2
+"ocean_model_zup", "thetao",                              "thetao",                                "ocean_threeday_zup",     "all", "mean", "none",2
+"ocean_model_zup", "so",                                  "so",                                    "ocean_threeday_zup",     "all", "mean", "none",2
+"ocean_model_zup", "o2",                                  "o2",                                    "ocean_threeday_zup",     "all", "mean", "none",2
+"ocean_model_zup", "hplus",                               "hplus",                                 "ocean_threeday_zup",     "all", "mean", "none",2
+
+### heat and salt tendencies (for material water mass transformations)
+# heat tendencies
+"ocean_model_zup", "opottemptend",                        "opottemptend",                         "ocean_threeday_zup",        "all", "mean", "none",2
+"ocean_model_zup", "Th_tendency_vert_remap",              "Th_tendency_vert_remap",               "ocean_threeday_zup",        "all", "mean", "none",2
+"ocean_model_zup", "opottempdiff",                        "opottempdiff",                         "ocean_threeday_zup",        "all", "mean", "none",2
+"ocean_model_zup", "boundary_forcing_heat_tendency",      "boundary_forcing_heat_tendency",       "ocean_threeday_zup",        "all", "mean", "none",2
+"ocean_model_zup", "frazil_heat_tendency",                "frazil_heat_tendency",                 "ocean_threeday_zup",        "all", "mean", "none",2
+"ocean_model_zup", "internal_heat_heat_tendency",         "internal_heat_heat_tendency",          "ocean_threeday_zup",        "all", "mean", "none",2
+
+# horizontal heat fluxes
+"ocean_model_zup", "T_adx",                              "T_adx",                                "ocean_threeday_zup",        "all", "mean", "none",2
+"ocean_model_zup", "T_ady",                              "T_ady",                                "ocean_threeday_zup",        "all", "mean", "none",2
+
+# thickness tendencies
+"ocean_model_zup", "boundary_forcing_h_tendency",         "boundary_forcing_h_tendency",          "ocean_threeday_zup",        "all", "mean", "none",2
+
+### mass transports (for overturning term)
+# mass transport for residual mean velocity
+"ocean_model_zup", "umo",                                 "umo",                                  "ocean_threeday_zup",        "all", "mean", "none",2
+"ocean_model_zup", "vmo",                                 "vmo",                                  "ocean_threeday_zup",        "all", "mean", "none",2
+
+### snapshots (required for closing layer-wise mass budgets)
+"ocean_threeday_zup_snap", "thkcello",                    "thkcello",                           "ocean_threeday_zup",   "all", "none", "none",2
+"ocean_threeday_zup_snap", "thetao",                      "thetao",                             "ocean_threeday_zup",   "all", "none", "none",2
