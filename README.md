@@ -18,4 +18,25 @@ Quick Start Guide
 pip install git+https://github.com/hdrake/xwmb.git@main
 ```
 
-See the [`xwmt` Quick-Start guide](https://github.com/hdrake/xwmt#quick-start-guide) for instructions on configuring a conda environment from scratch.
+**Installing from scratch using `conda`**
+
+This is the recommended mode of installation for developers.
+```bash
+git clone git@github.com:hdrake/xwmb.git
+cd xwmb
+conda env create -f docs/environment.yml
+conda activate docs_env_xwmb
+pip install -e .
+```
+
+You can verify that the package was properly installed by confirming it passes all of the tests with:
+```bash
+pytest -v
+```
+
+You can launch a Jupyterlab instance using this environment with:
+```bash
+python -m ipykernel install --user --name docs_env_xwmb --display-name "docs_env_xwmb"
+jupyter-lab
+```
+

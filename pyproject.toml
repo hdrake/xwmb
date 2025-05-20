@@ -17,9 +17,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "sectionate @ git+https://github.com/hdrake/sectionate.git@master",
     "regionate @ git+https://github.com/hdrake/regionate.git@main",
-    "xbudget @ git+https://github.com/hdrake/xbudget.git@main",
     "xwmt @ git+https://github.com/hdrake/xwmt.git@main",
 ]
 

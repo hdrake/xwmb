@@ -1,0 +1,16 @@
+name: docs_env_xwmb
+channels:
+  - conda-forge
+dependencies:
+  - python==3.11
+  - black
+  - pylint
+  - pytest
+  - netcdf4
+  - nc-time-axis
+  - ipython
+  - jupyter
+  - jupyter-sphinx
+  - matplotlib
+  - sphinx-book-theme
+  - pip
