@@ -282,8 +282,8 @@ class WaterMassBudget(WaterMassTransformations):
                 if along_section: # compute normal transports using sectionate
                     self.grid._ds['convergent_mass_transport_original'] = sectionate.convergent_transport(
                         self.grid,
-                        self.region.i,
-                        self.region.j,
+                        self.region.i_c,
+                        self.region.j_c,
                         positive_in = self.region.mask,
                         **kwargs
                     ).rename({"lat":"lat_sect", "lon":"lon_sect"})['conv_mass_transport']
@@ -294,8 +294,8 @@ class WaterMassBudget(WaterMassTransformations):
                         self.grid._ds[f'{lambda_var}_sect'] = sectionate.extract_tracer(
                             lambda_var,
                             self.grid,
-                            self.region.i,
-                            self.region.j,
+                            self.region.i_c,
+                            self.region.j_c,
                         )
             
                         self.grid._ds[f'{lambda_var}_i_sect'] = (
