@@ -17,8 +17,8 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "regionate @ git+https://github.com/hdrake/regionate.git@main",
-    "xwmt @ git+https://github.com/hdrake/xwmt.git@main",
+    "regionate >= 0.5.0",
+    "xwmt >= 0.1.0",
 ]
 
 [project.urls]
