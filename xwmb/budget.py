@@ -336,28 +336,30 @@ class WaterMassBudget(WaterMassTransformations):
 
                     divergence_X = self.grid.diff(
                         self.grid.transform(
-                            self.grid._ds[kwargs['utr']].fillna(0.),
+                            self.grid._ds[kwargs['utr']].fillna(0.).chunk({self.grid.axes['Z'].coords['center']: -1}),
                             "Z",
                             target = self.grid._ds[self.target_coords["outer"]],
                             target_data = lam_itpXZ,
                             method="conservative"
                         ).fillna(0.)
                         .rename({self.target_coords["outer"]: self.target_coords["center"]})
-                        .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]}),
+                        .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
+                        .chunk({self.grid.axes['X'].coords['outer']: -1}),
                         "X"
-                    )
+                    ).chunk({self.grid.axes['X'].coords['center']: 100, self.grid.axes['Y'].coords['center']: 100})
                     divergence_Y = self.grid.diff(
                         self.grid.transform(
-                            self.grid._ds[kwargs['vtr']].fillna(0.),
+                            self.grid._ds[kwargs['vtr']].fillna(0.).chunk({self.grid.axes['Z'].coords['center']: -1}),
                             "Z",
                             target = self.grid._ds[self.target_coords["outer"]],
                             target_data = lam_itpYZ,
                             method="conservative"
                         ).fillna(0.)
                         .rename({self.target_coords["outer"]: self.target_coords["center"]})
-                        .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]}),
+                        .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
+                        .chunk({self.grid.axes['Y'].coords['outer']: -1}),
                         "Y"
-                    )
+                    ).chunk({self.grid.axes['X'].coords['center']: 100, self.grid.axes['Y'].coords['center']: 100})
                     
                     self.grid._ds['convergent_mass_transport_layer'] = -(
                         divergence_X + divergence_Y
