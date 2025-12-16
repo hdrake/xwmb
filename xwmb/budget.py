@@ -651,7 +651,9 @@ def mass_tendency(ds):
     """
     if not all([v in ds for v in ["time_bounds", "mass_bounds"]]):
         raise ValueError("Needs both `time_bounds` and `mass_bounds` variables")
-    dt = ds.time_bounds.diff('time_bounds').astype('float')*1.e-9
+    dt = ds.time_bounds.diff('time_bounds')
+    if dt.dtype == "<m8[ns]":
+        dt = dt.astype('float')*1.e-9
     if ds.time_bounds.size == ds.time.size:
         time_target = ds.time[1:]
         print("Warning: first value of `mass_tendency` may be NaN!")
