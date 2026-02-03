@@ -346,7 +346,7 @@ class WaterMassBudget(WaterMassTransformations):
                         .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
                         .chunk({self.grid.axes['X'].coords['outer']: -1}),
                         "X"
-                    ).chunk({self.grid.axes['X'].coords['center']: 100, self.grid.axes['Y'].coords['center']: 100})
+                    )
                     divergence_Y = self.grid.diff(
                         self.grid.transform(
                             self.grid._ds[kwargs['vtr']].fillna(0.).chunk({self.grid.axes['Z'].coords['center']: -1}),
@@ -359,7 +359,7 @@ class WaterMassBudget(WaterMassTransformations):
                         .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
                         .chunk({self.grid.axes['Y'].coords['outer']: -1}),
                         "Y"
-                    ).chunk({self.grid.axes['X'].coords['center']: 100, self.grid.axes['Y'].coords['center']: 100})
+                    )
                     
                     self.grid._ds['convergent_mass_transport_layer'] = -(
                         divergence_X + divergence_Y
@@ -652,7 +652,10 @@ def mass_tendency(ds):
     if not all([v in ds for v in ["time_bounds", "mass_bounds"]]):
         raise ValueError("Needs both `time_bounds` and `mass_bounds` variables")
     dt = ds.time_bounds.diff('time_bounds')
-    if dt.dtype == "<m8[ns]":
+    # Convert timedelta to float (seconds)
+    if str(dt.dtype).startswith('timedelta64'):
+        dt = dt / np.timedelta64(1, 's')
+    elif dt.dtype == "<m8[ns]":
         dt = dt.astype('float')*1.e-9
     if ds.time_bounds.size == ds.time.size:
         time_target = ds.time[1:]

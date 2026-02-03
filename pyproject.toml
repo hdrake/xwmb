@@ -10,7 +10,7 @@ keywords = [
     "water mass transformation",
     "ocean mixing"
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
