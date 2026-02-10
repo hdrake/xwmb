@@ -233,6 +233,49 @@ class WaterMassBudget(WaterMassTransformations):
             wmt['boundary_fluxes'] = sum([wmt[term] for term in boundary_flux_terms if term in wmt])
         
         return wmt
+    
+    def _vertical_transform(self, da, target_data):
+        return (
+            self.grid.transform(
+                da.fillna(0.),
+                "Z",
+                target = self.grid._ds[self.target_coords["outer"]],
+                target_data = target_data,
+                method="conservative"
+            )
+            .rename({self.target_coords["outer"]: self.target_coords["center"]})
+            .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
+            .chunk({self.grid.axes['Z_target'].coords['center']: -1})
+        )
+    
+    def _vertical_cumsum(self, da, reverse=False):
+        if reverse:
+            ds_tmp = self.grid._ds.sel({
+                self.target_coords["outer"]:  slice(None, None, -1),
+                self.target_coords["center"]: slice(None, None, -1)
+            })
+        else:
+            ds_tmp = self.grid._ds
+
+        lam_grid = Grid(
+            ds_tmp,
+            coords={'lam': self.target_coords},
+            boundary={'lam': 'extend'},
+            autoparse_metadata=False
+        )
+
+        da_cumsum = lam_grid.cumsum(
+            ds_tmp[da.name], "lam", boundary="fill", fill_value=0.
+        ).chunk({self.target_coords["outer"]: -1})
+
+        if reverse:
+            da_cumsum = da_cumsum.isel({
+                self.target_coords["outer"]:  slice(None, None, -1),
+            })
+        
+        return da_cumsum.assign_coords(
+            {self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]]}
+        )
         
     def convergent_transport(self, lambda_name, greater_than=False, integrate=True, along_section=False):
         """
@@ -305,23 +348,15 @@ class WaterMassBudget(WaterMassTransformations):
                         )
                         target_data = self.grid._ds[f'{lambda_var}_i_sect']
 
-                    self.grid._ds['convergent_mass_transport_layer'] = (
-                        self.grid.transform(
-                            self.grid._ds['convergent_mass_transport_original'].fillna(0.),
-                            "Z",
-                            target = self.grid._ds[self.target_coords["outer"]],
-                            target_data = target_data,
-                            method="conservative"
-                        )
-                        .rename({self.target_coords["outer"]: self.target_coords["center"]})
-                        .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
+                    self.grid._ds['convergent_mass_transport_layer'] = self._vertical_transform(
+                        self.grid._ds['convergent_mass_transport_original'],
+                        target_data,
                     )
 
                 elif not(along_section): # compute normal transports for each grid cell then sum
                     if self.prebinned:
                         lam_itpXZ = self.grid._ds[f'{lambda_var}_i']
                         lam_itpYZ = self.grid._ds[f'{lambda_var}_i']
-                        
                     else:
                         lam_itpXZ = self.grid.interp(
                             self.grid.interp(self.grid._ds[lambda_var], "X"),
@@ -335,29 +370,17 @@ class WaterMassBudget(WaterMassTransformations):
                         ).chunk({self.grid.axes['Z'].coords['outer']: -1})
 
                     divergence_X = self.grid.diff(
-                        self.grid.transform(
-                            self.grid._ds[kwargs['utr']].fillna(0.).chunk({self.grid.axes['Z'].coords['center']: -1}),
-                            "Z",
-                            target = self.grid._ds[self.target_coords["outer"]],
-                            target_data = lam_itpXZ,
-                            method="conservative"
-                        ).fillna(0.)
-                        .rename({self.target_coords["outer"]: self.target_coords["center"]})
-                        .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
-                        .chunk({self.grid.axes['X'].coords['outer']: -1}),
+                        self._vertical_transform(
+                            self.grid._ds[kwargs['utr']].chunk({self.grid.axes['Z'].coords['center']: -1}),
+                            lam_itpXZ,
+                        ).fillna(0.),
                         "X"
                     )
                     divergence_Y = self.grid.diff(
-                        self.grid.transform(
-                            self.grid._ds[kwargs['vtr']].fillna(0.).chunk({self.grid.axes['Z'].coords['center']: -1}),
-                            "Z",
-                            target = self.grid._ds[self.target_coords["outer"]],
-                            target_data = lam_itpYZ,
-                            method="conservative"
-                        ).fillna(0.)
-                        .rename({self.target_coords["outer"]: self.target_coords["center"]})
-                        .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
-                        .chunk({self.grid.axes['Y'].coords['outer']: -1}),
+                        self._vertical_transform(
+                            self.grid._ds[kwargs['vtr']].chunk({self.grid.axes['Z'].coords['center']: -1}),
+                            lam_itpYZ,
+                        ).fillna(0.),
                         "Y"
                     )
                     
@@ -366,36 +389,10 @@ class WaterMassBudget(WaterMassTransformations):
                     ) * self.region.mask
             
             suffix = 'greater_than' if greater_than else 'less_than'
-            lam_grid = Grid(
-                self.grid._ds,
-                coords={'lam': self.target_coords},
-                boundary={'lam': 'extend'},
-                autoparse_metadata=False
+            self.grid._ds[f'convergent_mass_transport_{suffix}'] = self._vertical_cumsum(
+                self.grid._ds['convergent_mass_transport_layer'],
+                reverse = greater_than
             )
-            if greater_than:
-                self.grid._ds = self.grid._ds.sel({
-                    self.target_coords["outer"]:  slice(None, None, -1),
-                    self.target_coords["center"]: slice(None, None, -1)
-                })
-                lam_rev_grid = Grid(
-                    self.grid._ds,
-                    coords={'lam': self.target_coords},
-                    boundary={'lam': 'extend'},
-                    autoparse_metadata=False
-                )
-                self.grid._ds[f'convergent_mass_transport_{suffix}'] = lam_rev_grid.cumsum(
-                    self.grid._ds['convergent_mass_transport_layer'], "lam", boundary="fill", fill_value=0.
-                ).chunk({self.target_coords["outer"]: -1})
-                self.grid._ds = self.grid._ds.isel({
-                    self.target_coords["outer"]:  slice(None, None, -1),
-                    self.target_coords["center"]: slice(None, None, -1),
-                })
-            else:
-                self.grid._ds[f'convergent_mass_transport_{suffix}'] = lam_grid.cumsum(
-                    self.grid._ds['convergent_mass_transport_layer'], "lam", boundary="fill", fill_value=0.
-                ).chunk({self.target_coords["outer"]: -1}).assign_coords(
-                    {self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]]}
-                )
 
         # Compute mass source term
         if self.prebinned:
@@ -409,47 +406,16 @@ class WaterMassBudget(WaterMassTransformations):
         
         mass_flux_varname = "mass_rhs_sum_surface_exchange_flux"
         if mass_flux_varname in self.grid._ds:
-            self.grid._ds['mass_source_density'] = (
-                self.grid.transform(
-                    self.grid._ds[mass_flux_varname].fillna(0.),
-                    "Z",
-                    target = self.grid._ds[self.target_coords["outer"]],
-                    target_data = target_data,
-                    method="conservative"
-                )
-                .rename({self.target_coords["outer"]: self.target_coords["center"]})
-                .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
+            self.grid._ds['mass_source_density'] = self._vertical_transform(
+                self.grid._ds[mass_flux_varname],
+                target_data = target_data,
             ) * self.region.mask
         
             suffix = 'greater_than' if greater_than else 'less_than'
-            lam_grid = Grid(
-                self.grid._ds,
-                coords={'lam': self.target_coords},
-                boundary={'lam': 'extend'},
-                autoparse_metadata=False
+            self.grid._ds[f'mass_source_density_{suffix}'] = self._vertical_cumsum(
+                self.grid._ds.mass_source_density,
+                reverse = greater_than
             )
-            if greater_than:
-                self.grid._ds = self.grid._ds.isel({
-                    self.target_coords["outer"]:  slice(None, None, -1),
-                    self.target_coords["center"]: slice(None, None, -1)
-                })
-                lam_rev_grid = Grid(
-                    self.grid._ds,
-                    coords={'lam': self.target_coords},
-                    boundary={'lam': 'extend'},
-                    autoparse_metadata=False
-                )
-                self.grid._ds[f'mass_source_density_{suffix}'] = lam_rev_grid.cumsum(
-                    self.grid._ds.mass_source_density, "lam", boundary="fill", fill_value=0.
-                ).chunk({self.target_coords["outer"]: -1})
-                self.grid._ds = self.grid._ds.isel({
-                    self.target_coords["outer"]:  slice(None, None, -1),
-                    self.target_coords["center"]: slice(None, None, -1)
-                })
-            else:
-                self.grid._ds[f'mass_source_density_{suffix}'] = lam_grid.cumsum(
-                    self.grid._ds.mass_source_density, "lam", boundary="fill", fill_value=0.
-                ).chunk({self.target_coords["outer"]: -1})
     
             if integrate:
                 self.grid._ds[f'mass_source_{suffix}'] = (self.grid._ds[f'mass_source_density_{suffix}']).sum([
@@ -460,15 +426,9 @@ class WaterMassBudget(WaterMassTransformations):
                 self.grid._ds[f'mass_source_{suffix}'] = self.grid._ds[f'mass_source_density_{suffix}']
         
         # Compute layer mass
-        self.grid._ds['mass_density'] = (self.grid.transform(
-                self.rho_ref*self.grid._ds[self.h_name].fillna(0.),
-                "Z",
-                target = self.grid._ds[self.target_coords["outer"]],
-                target_data = target_data,
-                method="conservative"
-            )
-            .rename({self.target_coords["outer"]: self.target_coords["center"]})
-            .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
+        self.grid._ds['mass_density'] = self._vertical_transform(
+            self.rho_ref*self.grid._ds[self.h_name],
+            target_data = target_data,
         ) * self.region.mask
         
         self.wmt['layer_mass'] = (
@@ -567,42 +527,22 @@ class WaterMassBudget(WaterMassTransformations):
             ) * self.region.mask
 
             suffix = 'greater_than' if greater_than else 'less_than'
-            lam_grid = Grid(
-                self.grid._ds,
-                coords={'lam': self.target_coords},
-                boundary={'lam': 'extend'},
-                autoparse_metadata=False
+            self.grid._ds[f'mass_density_bounds_{suffix}'] = self._vertical_cumsum(
+                self.grid._ds.mass_density_bounds,
+                reverse = greater_than
             )
-            if greater_than:
-                self.grid._ds = self.grid._ds.isel({
-                    self.target_coords["outer"]:  slice(None, None, -1),
-                    self.target_coords["center"]: slice(None, None, -1),
-                })
-                lam_rev_grid = Grid(
-                    self.grid._ds,
-                    coords={'lam': self.target_coords},
-                    boundary={'lam': 'extend'},
-                    autoparse_metadata=False
-                )
-                self.grid._ds[f'mass_density_bounds_{suffix}'] = lam_rev_grid.cumsum(
-                    self.grid._ds.mass_density_bounds, "lam", boundary="fill", fill_value=0.
-                ).chunk({self.target_coords["outer"]: -1})
-                self.grid._ds = self.grid._ds.isel({
-                    self.target_coords["outer"]:  slice(None, None, -1),
-                    self.target_coords["center"]: slice(None, None, -1),
-                })
-            else:
-                self.grid._ds[f'mass_density_bounds_{suffix}'] = lam_grid.cumsum(
-                    self.grid._ds.mass_density_bounds, "lam", boundary="fill", fill_value=0.
-                ).chunk({self.target_coords["outer"]: -1}).assign_coords(
-                    {self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]]}
-                )
 
             self.grid._ds[f'mass_bounds_{suffix}'] = (
                 self.grid._ds[f'mass_density_bounds_{suffix}'] *
                 self.grid.get_metric(self.grid._ds[f"{lambda_var}_bounds"], ("X", "Y"))
             )
             
+            lam_grid = Grid(
+                self.grid._ds,
+                coords={'lam': self.target_coords},
+                boundary={'lam': 'extend'},
+                autoparse_metadata=False
+            )
             if integrate:
                 self.wmt['mass_bounds'] = lam_grid.interp(
                     self.grid._ds[f'mass_bounds_{suffix}'],
