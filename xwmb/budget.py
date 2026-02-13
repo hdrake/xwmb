@@ -120,9 +120,10 @@ class WaterMassBudget(WaterMassTransformations):
             Whether to integrate the in the ("X", "Y") dimensions
         along_section : bool (default: False)
             Whether to include information about the along-section structure of convergent transports (with `sectionate`)
-        default_bins : bool (default: False)
-            Whether to use the default target coordinate grids for the vertical coordinate transformations
-
+        default_bins : False or list (default: False)
+            If False: lambda bins are already included in the dataset
+            If list: must be [lambda_min,lambda_max,dlambda] to construct lambda bins
+            
         Returns
         -------
         xr.Dataset
@@ -130,14 +131,23 @@ class WaterMassBudget(WaterMassTransformations):
         """
         lambda_var = self.get_lambda_var(lambda_name)
         target_coords = {"center": f"{lambda_var}_l_target", "outer": f"{lambda_var}_i_target"}
-        if default_bins:
-            if "Z_target" not in self.grid.axes:
-                self.add_default_gridcoords(lambda_name)
-            else:
-                raise ValueError(
-                    """Cannot pass `default_bins=True` when `Z_target in WaterMassBudget.grid.axes`."""
+        
+        if default_bins==True:
+            raise ValueError(
+                    """Cannot pass `default_bins=True`: need to specify a list [lambda_min,lambda_max,dlambda] """
                 )
-        else:
+        if isinstance(default_bins,list):
+            if len(default_bins) != 3:
+                raise ValueError(
+                    """ Need to pass a list of length 3: default_bins=[lambda_min,lambda_max,dlambda] """
+                )
+            elif "Z_target" in self.grid.axes:
+                raise ValueError(
+                    """Cannot specify default_bins when `Z_target in WaterMassBudget.grid.axes`."""
+                )
+            else:
+                self.add_default_gridcoords(lambda_name,default_bins)
+        elif default_bins==False:
             avail_target_coords = [c in self.grid._ds for c in target_coords.values()]
             avail_lambda_coords = [
                 c.replace("_target", "") in self.grid._ds
@@ -166,6 +176,11 @@ class WaterMassBudget(WaterMassTransformations):
                         f"""To specify target grid, either pass `default_bins=True` or
                         include {target_coords["center"]} and {target_coords["outer"]}
                         in `WaterMassBudget.grid._ds`.""")
+        else:
+            raise ValueError(
+                    """default_bins needs to be either False or a list of length 3 [lambda_min,lambda_mas,dlambda] (default behaviour: default_bins=False) """
+                )
+                    
         self.target_coords = target_coords
         self.ax_bounds = "Z" if "Z_bounds" not in self.grid.axes else "Z_bounds"
         self.prebinned = all([
@@ -563,16 +578,11 @@ class WaterMassBudget(WaterMassTransformations):
 
         return
         
-    def add_default_gridcoords(self, lambda_name):
+    def add_default_gridcoords(self, lambda_name, default_bins):
         lambda_var = self.get_lambda_var(lambda_name)
-        if "sigma" in lambda_name:
-            lam_min, lam_max, dlam = 0., 50., 0.1
-            
-        elif lambda_name=="heat":
-            lam_min, lam_max, dlam = -4, 40., 0.1
-
-        elif lambda_name=="salt":
-            lam_min, lam_max, dlam = -1., 50., 0.1
+        lam_min = default_bins[0]
+        lam_max = default_bins[1]
+        dlam    = default_bins[2]
 
         self.grid._ds = self.grid._ds.assign_coords({
             f"{lambda_var}_l_target" : np.arange(lam_min, lam_max, dlam),
