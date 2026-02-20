@@ -105,7 +105,7 @@ class WaterMassBudget(WaterMassTransformations):
             ).region_dict[0]
             self.assert_zero_transport = True
 
-    def mass_budget(self, lambda_name, greater_than=False, integrate=True, along_section=False, default_bins=False):
+    def mass_budget(self, lambda_name, greater_than=False, integrate=True, along_section=False, bins=None, default_bins=None):
         """
         Lazily evaluates the mass budget
 
@@ -120,52 +120,84 @@ class WaterMassBudget(WaterMassTransformations):
             Whether to integrate the in the ("X", "Y") dimensions
         along_section : bool (default: False)
             Whether to include information about the along-section structure of convergent transports (with `sectionate`)
-        default_bins : bool (default: False)
-            Whether to use the default target coordinate grids for the vertical coordinate transformations
+        bins : None or array (default: None)
+            If None: assume lambda bins are already included in the dataset
+            If array: must be a 1D np.ndarray of bin edges
+        default_bins : deprecated
+            Deprecated parameter. Use `bins` instead.
+            If True: call `add_default_gridcoords` to generate bins
+            If False: corresponds to bins=None
+            If list: corresponds to bins=np.arange(*default_bins)
 
         Returns
         -------
         xr.Dataset
             Contains all terms in the full water mass transformation budget
         """
+        import warnings
+
         lambda_var = self.get_lambda_var(lambda_name)
         target_coords = {"center": f"{lambda_var}_l_target", "outer": f"{lambda_var}_i_target"}
-        if default_bins:
-            if "Z_target" not in self.grid.axes:
+        
+        if default_bins is not None:
+            warnings.warn(
+                "`default_bins` is deprecated and will be removed in a future version. "
+                "Use `bins` instead. "
+                "Note: The behavior has changed - `bins=None` is now the default, "
+                "and you should pass an array to `bins` to specify the edges of custom bins.",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            
+            # Handle old True/False behavior
+            if default_bins == True:
                 self.add_default_gridcoords(lambda_name)
+            elif default_bins == False:
+                bins = None
+            elif len(default_bins) == 3 and all(isinstance(x, (int, float, np.integer, np.floating)) for x in default_bins):
+                bins = np.arange(*default_bins)
+                self.add_bins_gridcoords(lambda_name,bins)
             else:
-                raise ValueError(
-                    """Cannot pass `default_bins=True` when `Z_target in WaterMassBudget.grid.axes`."""
-                )
+                raise TypeError(f"Boolean or list of 3 numbers expected, got {type(default_bins).__name__}")
+        elif isinstance(bins, np.ndarray):
+            self.add_bins_gridcoords(lambda_name, bins)
+        elif bins is None:
+            pass
         else:
-            avail_target_coords = [c in self.grid._ds for c in target_coords.values()]
-            avail_lambda_coords = [
-                c.replace("_target", "") in self.grid._ds
-                for c in target_coords.values()
-            ]
-            if "Z_target" not in self.grid.axes:
-                if all(avail_lambda_coords):
-                    if not all(avail_target_coords):
-                        self.grid._ds = self.grid._ds.assign_coords({
-                            target_coords["center"]: xr.DataArray(
-                                self.grid._ds[target_coords["center"].replace("_target", "")].values,
-                                dims=(target_coords["center"],)
-                            ),
-                            target_coords["outer"]: xr.DataArray(
-                                self.grid._ds[target_coords["outer"].replace("_target", "")].values,
-                                dims=(target_coords["outer"],)
-                            )
-                        })
-                    self.grid = add_gridcoords(
-                        self.grid,
-                        {"Z_target": target_coords},
-                        {"Z_target": "extend"}
-                    )
-                else: # `elif not all(avail_lambda_coords):`
-                    raise ValueError(
-                        f"""To specify target grid, either pass `default_bins=True` or
-                        include {target_coords["center"]} and {target_coords["outer"]}
-                        in `WaterMassBudget.grid._ds`.""")
+            raise TypeError(f"None or array expected, got {type(bins).__name__}")
+
+        lambda_var = self.get_lambda_var(lambda_name)
+        target_coords = {"center": f"{lambda_var}_l_target", "outer": f"{lambda_var}_i_target"}
+        
+        avail_target_coords = [c in self.grid._ds for c in target_coords.values()]
+        avail_lambda_coords = [
+            c.replace("_target", "") in self.grid._ds
+            for c in target_coords.values()
+        ]
+        if "Z_target" not in self.grid.axes:
+            if all(avail_lambda_coords):
+                if not all(avail_target_coords):
+                    self.grid._ds = self.grid._ds.assign_coords({
+                        target_coords["center"]: xr.DataArray(
+                            self.grid._ds[target_coords["center"].replace("_target", "")].values,
+                            dims=(target_coords["center"],)
+                        ),
+                        target_coords["outer"]: xr.DataArray(
+                            self.grid._ds[target_coords["outer"].replace("_target", "")].values,
+                            dims=(target_coords["outer"],)
+                        )
+                    })
+                self.grid = add_gridcoords(
+                    self.grid,
+                    {"Z_target": target_coords},
+                    {"Z_target": "extend"}
+                )
+            else: # `elif not all(avail_lambda_coords):`
+                raise ValueError(
+                    f"""To specify target grid, either pass a 1D array to `bins` or
+                    include {target_coords["center"]} and {target_coords["outer"]}
+                    in `WaterMassBudget.grid._ds`.""")
+                    
         self.target_coords = target_coords
         self.ax_bounds = "Z" if "Z_bounds" not in self.grid.axes else "Z_bounds"
         self.prebinned = all([
@@ -563,27 +595,26 @@ class WaterMassBudget(WaterMassTransformations):
 
         return
         
-    def add_default_gridcoords(self, lambda_name):
+    def add_bins_gridcoords(self, lambda_name, bin_edges):
         lambda_var = self.get_lambda_var(lambda_name)
-        if "sigma" in lambda_name:
-            lam_min, lam_max, dlam = 0., 50., 0.1
-            
-        elif lambda_name=="heat":
-            lam_min, lam_max, dlam = -4, 40., 0.1
-
-        elif lambda_name=="salt":
-            lam_min, lam_max, dlam = -1., 50., 0.1
-
         self.grid._ds = self.grid._ds.assign_coords({
-            f"{lambda_var}_l_target" : np.arange(lam_min, lam_max, dlam),
-            f"{lambda_var}_i_target" : np.arange(lam_min-dlam/2., lam_max+dlam/2, dlam),
+            f"{lambda_var}_l_target" : 0.5*(bin_edges[1:]+bin_edges[:-1]),
+            f"{lambda_var}_i_target" : bin_edges,
         })
-        
         self.grid = add_gridcoords(
             self.grid,
             {"Z_target": {"outer": f"{lambda_var}_i_target", "center": f"{lambda_var}_l_target"}},
             {"Z_target": "extend"}
         )
+
+    def add_default_gridcoords(self, lambda_name):
+        if "sigma" in lambda_name:
+            bin_edges = np.arange(0., 50. + 0.05, 0.05)
+        elif lambda_name=="heat":
+            bin_edges = np.arange(-4.0, 40. + 0.05, 0.05)
+        elif lambda_name=="salt":
+            bin_edges = np.arange(-1.0, 40. + 0.05, 0.05)
+        self.add_bins_gridcoords(lambda_name, bin_edges)
         
 def mass_tendency(ds):
     """
