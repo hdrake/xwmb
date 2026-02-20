@@ -1,6 +1,7 @@
 name: test_env_xwmb
 channels:
   - conda-forge
+  - nodefaults
 dependencies:
   - python>=3.12
   - black
