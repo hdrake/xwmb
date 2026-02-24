@@ -262,12 +262,14 @@ class WaterMassBudget(WaterMassTransformations):
             for v in wmt.data_vars:
                 wmt[v] *= -1
                 
+        # Add up all terms that contribute to boundary-forced transformations
         boundary_flux_terms = [
             'surface_exchange_flux',
             'surface_ocean_flux_advective_negative_rhs',
             'bottom_flux',
             'frazil_ice'
         ]
+        # If decompose is not [], we need to sum up all contributing terms!
         ignore_suffixes = [lambda_name]
         if "sigma" in lambda_name:
             ignore_suffixes += ["heat", "salt"]
@@ -275,7 +277,7 @@ class WaterMassBudget(WaterMassTransformations):
             wmt['boundary_fluxes'] = sum([
                 sum([
                     wmt[term] for term in wmt
-                    if (term in bflux) and not any(s in term for s in ignore_suffixes)
+                    if (bflux in term) and not any(s in term for s in ignore_suffixes)
                 ])
                 for bflux in boundary_flux_terms
             ])
