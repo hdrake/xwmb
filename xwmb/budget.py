@@ -62,6 +62,13 @@ class WaterMassBudget(WaterMassTransformations):
         assert_zero_transport : bool (default: False)
             Optionally assert that the diapycnal transport term is zero, accelerating the
             calculations for domains where it is already known that this term vanishes.
+
+        Example
+        --------
+        >>> grid = xgcm.Grid(ds, coords=coords, boundary=boundary)
+        >>> xbudget_dict = xbudget.load_preset_budget(model="MOM6")
+        >>> xbudget.collect_budgets(grid, xbudget_dict)
+        >>> wmb = xwmb.WaterMassBudget(grid, xbudget_dict)
         """
 
         super().__init__(
@@ -261,8 +268,17 @@ class WaterMassBudget(WaterMassTransformations):
             'bottom_flux',
             'frazil_ice'
         ]
-        if any([term in wmt for term in boundary_flux_terms]):
-            wmt['boundary_fluxes'] = sum([wmt[term] for term in boundary_flux_terms if term in wmt])
+        ignore_suffixes = [lambda_name]
+        if "sigma" in lambda_name:
+            ignore_suffixes += ["heat", "salt"]
+        if any([bflux in term for bflux in boundary_flux_terms for term in wmt]):
+            wmt['boundary_fluxes'] = sum([
+                sum([
+                    wmt[term] for term in wmt
+                    if (term in bflux) and not any(s in term for s in ignore_suffixes)
+                ])
+                for bflux in boundary_flux_terms
+            ])
         
         return wmt
     
