@@ -39,7 +39,7 @@ jobs:
 
       - name: Set up conda environment
         run: |
-          mamba env update -n test_env_xwmb -f ci/environment.yml --prune
+          mamba env update -n test_env_xwmb -f ci/environment.yml
           python -m pip install -e .
       - name: Conda list information
         run: |
