@@ -15,7 +15,7 @@ Quick Start Guide
 
 **Minimal installation within an existing environment**
 ```bash
-pip install xwmb
+conda install -c conda-forge xwmb
 ```
 
 **Installing from scratch using `conda`**
