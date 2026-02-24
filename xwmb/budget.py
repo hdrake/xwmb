@@ -161,6 +161,8 @@ class WaterMassBudget(WaterMassTransformations):
                 raise TypeError(f"Boolean or list of 3 numbers expected, got {type(default_bins).__name__}")
         elif isinstance(bins, np.ndarray):
             self.add_bins_gridcoords(lambda_name, bins)
+        elif isinstance(bins, xr.DataArray):
+            self.add_bins_gridcoords(lambda_name, bins.values)
         elif bins is None:
             pass
         else:
