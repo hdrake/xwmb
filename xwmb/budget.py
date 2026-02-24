@@ -127,7 +127,7 @@ class WaterMassBudget(WaterMassTransformations):
             Deprecated parameter. Use `bins` instead.
             If True: call `add_default_gridcoords` to generate bins
             If False: corresponds to bins=None
-            If list: corresponds to bins=np.arange(*default_bins)
+            If list: corresponds to ``bins=np.arange(*default_bins)``
 
         Returns
         -------
@@ -224,7 +224,7 @@ class WaterMassBudget(WaterMassTransformations):
             Whether the budget should be for a water mass with tracer values "greater than" the threshold, or
             not ("less than" the threshold).
         integrate : bool (default: True)
-            Whether to integrate the in the ("X", "Y") dimensions
+            Whether to integrate transformation rates in the ("X", "Y") dimensions
 
         Returns
         -------
