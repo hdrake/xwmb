@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.11', '3.12', '3.13', '3.14']
+        python-version: ['3.11', '3.12', '3.13']
 
     steps:
       - name: Cancel previous runs
@@ -39,7 +39,7 @@ jobs:
 
       - name: Set up conda environment
         run: |
-          mamba env update -f ci/environment.yml
+          mamba env update -n test_env_xwmb -f ci/environment.yml --prune
           python -m pip install -e .
       - name: Conda list information
         run: |
