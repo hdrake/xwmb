@@ -1,4 +1,11 @@
-# xwmb
+xwmb: xarray-enabled Water Mass transformation Budgets (WMB) using structured ocean model output
+=========================
+
+[![PyPI](https://badge.fury.io/py/xwmb.svg)](https://badge.fury.io/py/xwmb)
+[![Conda Version](https://img.shields.io/conda/vn/conda-forge/xwmb)](https://anaconda.org/conda-forge/xwmb)
+[![Docs](https://readthedocs.org/projects/xwmb/badge/?version=latest)](https://xwmb.readthedocs.io/en/latest/)
+[![License](https://img.shields.io/github/license/hdrake/xwmb)](https://github.com/hdrake/xwmb)
+
 
 **xWMB** is a Python package that provides a efficient and lazy computation of Water Mass Budgets in arbitrary sub-domains of C-grid ocean models. Most of the heavy lifting is done by dependency packages by the same team of developers:
 - [`sectionate`](https://github.com/MOM6-Community/sectionate): for computing transports normal to a section (open or closed)
