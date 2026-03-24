@@ -23,7 +23,7 @@
 # water mass state variable (required)
 "ocean_model_rho2", "thkcello",                        "thkcello"    ,                             "ocean_month_rho2",        "all", "mean", "none",2
 "ocean_model_rho2", "thetao",                          "thetao",                                   "ocean_month_rho2",        "all", "mean", "none",2
-"ocean_model_rho2", "salt",                            "salt",                                     "ocean_month_rho2",        "all", "mean", "none",2
+"ocean_model_rho2", "so",                              "so",                                     "ocean_month_rho2",        "all", "mean", "none",2
 
 ### heat and salt tendencies (for material water mass transformations)
 # heat tendencies
