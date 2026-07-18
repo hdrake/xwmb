@@ -1,5 +1,6 @@
 import xgcm
 import xwmb
+import xbudget
 import xarray as xr
 import numpy as np
 
@@ -97,6 +98,10 @@ def test_mass_budget():
         },
         "tracer": {"lambda": "lam", "rhs": {"sum": {"tendency": {"var": "tend"}}}}
     }
+
+    # xbudget >= 0.7 defaults to name_scheme="v1"; WaterMassBudget still uses the
+    # deprecated aggregate() path, which needs the recipe filled in by a legacy run.
+    xbudget.collect_budgets(grid, xbudget_dict, name_scheme="legacy")
 
     wmb = xwmb.WaterMassBudget(
         grid,

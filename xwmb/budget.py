@@ -67,13 +67,22 @@ class WaterMassBudget(WaterMassTransformations):
         --------
         >>> grid = xgcm.Grid(ds, coords=coords, padding=padding)
         >>> xbudget_dict = xbudget.load_preset_budget(model="MOM6")
-        >>> xbudget.collect_budgets(grid, xbudget_dict)
+        >>> xbudget.collect_budgets(grid, xbudget_dict, name_scheme="legacy")
         >>> wmb = xwmb.WaterMassBudget(grid, xbudget_dict)
         """
 
+        # xbudget.aggregate() reads the `var` fields only a name_scheme="legacy"
+        # collect_budgets run fills into the recipe; xbudget >= 0.7 deprecates it
+        # (FutureWarning) and it requires the caller to have collected with
+        # name_scheme="legacy". The warning is xwmb's to act on -- via the planned
+        # migration to xbudget.BudgetQuery(grid, xbudget_dict).aggregate(...), which
+        # works with the default v1 output -- not the end user's, so silence it here.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            simple_budgets = xbudget.aggregate(xbudget_dict, decompose=decompose)
         super().__init__(
             grid,
-            xbudget.aggregate(xbudget_dict, decompose=decompose),
+            simple_budgets,
             teos10=teos10,
             cp=cp,
             rho_ref=rho_ref,
