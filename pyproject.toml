@@ -19,6 +19,10 @@ classifiers = [
 dependencies = [
     "regionate >= 0.5.5",
     "xwmt >= 0.3.0",
+    # Imported directly (`from xgcm import Grid`). 0.10.0 renamed the `boundary`
+    # argument to `padding` on both the Grid constructor and the axis methods,
+    # which this code now uses, so the floor is a hard requirement.
+    "xgcm >= 0.10.0",
     # Imported directly (was only pulled in transitively via xwmt). 0.7.0 defaults
     # to name_scheme="v1"; xwmb uses the deprecated aggregate() path via
     # name_scheme="legacy" for now (see the planned v1-native migration). Cap below

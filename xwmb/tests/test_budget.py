@@ -1,6 +1,7 @@
 import xgcm
 import xwmb
 import xbudget
+import pytest
 import xarray as xr
 import numpy as np
 
@@ -84,6 +85,72 @@ def synthetic_grid():
     )
 
     return grid
+
+def _minimal_recipe():
+    return {
+        "mass": {
+            "thickness": "thickness",
+            "rhs": {"sum": {"advection": {"sum": {"lateral": {"sum": {
+                "zonal_convergence": {"product": {"zonal_divergence": {"difference": {"zonal_mass_transport": "umo"}}}},
+                "meridional_convergence": {"product": {"meridional_divergence": {"difference": {"meridional_mass_transport": "vmo"}}}}
+            }}}}}}
+        },
+        "tracer": {"lambda": "lam", "rhs": {"sum": {"tendency": {"var": "tend"}}}}
+    }
+
+
+def _collected(grid=None):
+    """A grid plus a legacy-filled recipe, ready for WaterMassBudget."""
+    grid = grid if grid is not None else synthetic_grid()
+    recipe = _minimal_recipe()
+    xbudget.collect_budgets(grid, recipe, name_scheme="legacy")
+    return grid, recipe
+
+
+# -- `xbudget_dict` -> `recipe` rename: the deprecation shim -----------------
+
+
+def test_recipe_positional_still_works():
+    grid, recipe = _collected()
+    wmb = xwmb.WaterMassBudget(grid, recipe, rho_ref=1.)
+    assert wmb.full_recipe is recipe
+
+
+def test_deprecated_xbudget_dict_kwarg_warns():
+    grid, recipe = _collected()
+    with pytest.warns(FutureWarning, match="xbudget_dict"):
+        wmb = xwmb.WaterMassBudget(grid, xbudget_dict=recipe, rho_ref=1.)
+    assert wmb.full_recipe is recipe
+
+
+def test_recipe_and_xbudget_dict_together_raises():
+    grid, recipe = _collected()
+    with pytest.raises(TypeError, match="both"):
+        xwmb.WaterMassBudget(grid, recipe, xbudget_dict=recipe, rho_ref=1.)
+
+
+def test_recipe_missing_raises():
+    grid = synthetic_grid()
+    with pytest.raises(TypeError, match="recipe"):
+        xwmb.WaterMassBudget(grid, rho_ref=1.)
+
+
+def test_deprecated_full_xbudget_dict_property():
+    grid, recipe = _collected()
+    wmb = xwmb.WaterMassBudget(grid, recipe, rho_ref=1.)
+    with pytest.warns(FutureWarning, match="full_xbudget_dict"):
+        assert wmb.full_xbudget_dict is wmb.full_recipe
+    with pytest.warns(FutureWarning, match="full_xbudget_dict"):
+        wmb.full_xbudget_dict = {"mass": {}}
+    assert wmb.full_recipe == {"mass": {}}
+
+
+def test_unfilled_recipe_raises_actionable_error():
+    """A default (v1) collect leaves the recipe unfilled; say what to do."""
+    grid = synthetic_grid()
+    with pytest.raises(ValueError, match="name_scheme='legacy'"):
+        xwmb.WaterMassBudget(grid, _minimal_recipe(), rho_ref=1.)
+
 
 def test_mass_budget():
     grid = synthetic_grid()

@@ -108,7 +108,18 @@ class WaterMassBudget(WaterMassTransformations):
         # works with the default v1 output -- not the end user's, so silence it here.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", FutureWarning)
-            simple_budgets = xbudget.aggregate(recipe, decompose=decompose)
+            try:
+                simple_budgets = xbudget.aggregate(recipe, decompose=decompose)
+            except ValueError as e:
+                # xbudget's message correctly points at BudgetQuery, which is not
+                # yet an option here -- xwmb still needs the legacy-filled recipe.
+                # Re-raise with the step the xwmb user can actually take.
+                raise ValueError(
+                    "WaterMassBudget needs a recipe already filled in by a legacy "
+                    "xbudget run. Call `xbudget.collect_budgets(grid, recipe, "
+                    "name_scheme='legacy')` before constructing it (the default "
+                    "name_scheme='v1' leaves the recipe untouched)."
+                ) from e
         super().__init__(
             grid,
             simple_budgets,
@@ -161,6 +172,18 @@ class WaterMassBudget(WaterMassTransformations):
             stacklevel=2,
         )
         return self.full_recipe
+
+    @full_xbudget_dict.setter
+    def full_xbudget_dict(self, value):
+        # It was a plain instance attribute before the rename, so assignment has
+        # to keep working rather than raising AttributeError.
+        warnings.warn(
+            "`WaterMassBudget.full_xbudget_dict` is deprecated and will be removed "
+            "in a future version; assign to `.full_recipe` instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        self.full_recipe = value
 
     def mass_budget(self, lambda_name, greater_than=False, integrate=True, along_section=False, bins=None, default_bins=None):
         """
