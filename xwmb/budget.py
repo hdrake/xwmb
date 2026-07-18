@@ -62,8 +62,8 @@ class WaterMassBudget(WaterMassTransformations):
             Contains information about ocean model grid coordinates, metrics, and data variables.
         recipe : dict
             Nested dictionary containing information about lambda and tendency variable names.
-            See `xwmt/conventions` for examples of how this dictionary should be structured
-            or the `xbudget` package: https://github.com/hdrake/xbudget
+            See `xbudget/recipes` for examples of how this dictionary should be structured
+            in the `xbudget` package: https://github.com/hdrake/xbudget
         region : regionate.GriddedRegion, tuple, or xr.DataArray (default: None)
             If tuple: must be of length two with (lons, lats) arrays of equal length; uses
             regionate.GriddedRegion to create the region that approximates these coordinates.
