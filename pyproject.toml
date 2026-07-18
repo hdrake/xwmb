@@ -23,6 +23,16 @@ dependencies = [
     # argument to `padding` on both the Grid constructor and the axis methods,
     # which this code now uses, so the floor is a hard requirement.
     "xgcm >= 0.10.0",
+    # Imported directly (`import sectionate`) but previously undeclared, arriving
+    # only transitively via regionate.
+    #
+    # KNOWN ISSUE: sectionate <= 0.3.3 (the latest release) reads the private
+    # `xgcm.Axis._boundary`, which xgcm 0.10 removed in favour of `.padding`, so
+    # it raises AttributeError on every region/section code path. The fix exists
+    # upstream but is unreleased, so no working floor can be pinned yet. Until
+    # sectionate (and the matching regionate) are released, `xgcm >= 0.10.0`
+    # above is satisfiable but the section/GriddedRegion paths are not usable.
+    "sectionate",
     # Imported directly (was only pulled in transitively via xwmt). 0.7.0 defaults
     # to name_scheme="v1"; xwmb uses the deprecated aggregate() path via
     # name_scheme="legacy" for now (see the planned v1-native migration). Cap below
