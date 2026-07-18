@@ -163,6 +163,33 @@ class WaterMassBudget(WaterMassTransformations):
             self.assert_zero_transport = True
 
     @property
+    def boundary(self):
+        """Deprecated alias for :attr:`padding`.
+
+        Renamed in step with xgcm 0.10, which renamed the per-axis `boundary`
+        setting to `padding`. Kept as a warning alias so the rename is not a
+        silent breaking change for anyone reading `wmb.boundary`.
+        """
+        warnings.warn(
+            "`WaterMassBudget.boundary` is deprecated and will be removed in a "
+            "future version; use `.padding` instead (xgcm 0.10 renamed the "
+            "per-axis `boundary` setting to `padding`).",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return self.padding
+
+    @boundary.setter
+    def boundary(self, value):
+        warnings.warn(
+            "`WaterMassBudget.boundary` is deprecated and will be removed in a "
+            "future version; assign to `.padding` instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        self.padding = value
+
+    @property
     def full_xbudget_dict(self):
         """Deprecated alias for :attr:`full_recipe` (renamed in step with xbudget 0.7.0)."""
         warnings.warn(

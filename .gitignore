@@ -1,3 +1,6 @@
 .ipynb_checkpoints
 __pycache__
 /paper/data/*.nc
+
+# Example datasets downloaded by examples/load_example_model_grid.py
+data/*.nc

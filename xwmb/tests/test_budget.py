@@ -2,6 +2,7 @@ import xgcm
 import xwmb
 import xbudget
 import pytest
+from xwmb.budget import _resolve_recipe
 import xarray as xr
 import numpy as np
 
@@ -108,41 +109,69 @@ def _collected(grid=None):
 
 
 # -- `xbudget_dict` -> `recipe` rename: the deprecation shim -----------------
+#
+# These exercise the shim itself, deliberately WITHOUT constructing a
+# WaterMassBudget. Construction pulls in regionate/sectionate, whose xgcm 0.10
+# migration is still in flux; coupling the shim tests to it made them fail for
+# environment reasons and silently mask real shim regressions.
+
+
+def _bare():
+    """A WaterMassBudget instance with no __init__ run (attributes only)."""
+    return object.__new__(xwmb.WaterMassBudget)
+
+
+def test_resolve_recipe_positional():
+    assert _resolve_recipe({"mass": {}}, None, "f") == {"mass": {}}
+
+
+def test_resolve_recipe_deprecated_kwarg_warns():
+    with pytest.warns(FutureWarning, match="xbudget_dict"):
+        assert _resolve_recipe(None, {"mass": {}}, "f") == {"mass": {}}
+
+
+def test_resolve_recipe_both_raises():
+    with pytest.raises(TypeError, match="both"):
+        _resolve_recipe({"mass": {}}, {"mass": {}}, "f")
+
+
+def test_resolve_recipe_neither_raises():
+    with pytest.raises(TypeError, match="recipe"):
+        _resolve_recipe(None, None, "f")
+
+
+def test_resolve_recipe_empty_recipe_is_not_missing():
+    """An empty dict is a value, not an absence: presence is tested with `is None`."""
+    assert _resolve_recipe({}, None, "f") == {}
+    with pytest.warns(FutureWarning, match="xbudget_dict"):
+        assert _resolve_recipe(None, {}, "f") == {}
+
+
+def test_deprecated_full_xbudget_dict_property():
+    wmb = _bare()
+    wmb.full_recipe = {"mass": {"thickness": "thickness"}}
+    with pytest.warns(FutureWarning, match="full_xbudget_dict"):
+        assert wmb.full_xbudget_dict is wmb.full_recipe
+    with pytest.warns(FutureWarning, match="full_xbudget_dict"):
+        wmb.full_xbudget_dict = {"mass": {}}
+    assert wmb.full_recipe == {"mass": {}}
+
+
+def test_deprecated_boundary_property():
+    """xgcm 0.10 renamed boundary->padding; the old attribute must still work."""
+    wmb = _bare()
+    wmb.padding = {"X": "extend"}
+    with pytest.warns(FutureWarning, match="boundary"):
+        assert wmb.boundary == {"X": "extend"}
+    with pytest.warns(FutureWarning, match="boundary"):
+        wmb.boundary = {"X": "periodic"}
+    assert wmb.padding == {"X": "periodic"}
 
 
 def test_recipe_positional_still_works():
     grid, recipe = _collected()
     wmb = xwmb.WaterMassBudget(grid, recipe, rho_ref=1.)
     assert wmb.full_recipe is recipe
-
-
-def test_deprecated_xbudget_dict_kwarg_warns():
-    grid, recipe = _collected()
-    with pytest.warns(FutureWarning, match="xbudget_dict"):
-        wmb = xwmb.WaterMassBudget(grid, xbudget_dict=recipe, rho_ref=1.)
-    assert wmb.full_recipe is recipe
-
-
-def test_recipe_and_xbudget_dict_together_raises():
-    grid, recipe = _collected()
-    with pytest.raises(TypeError, match="both"):
-        xwmb.WaterMassBudget(grid, recipe, xbudget_dict=recipe, rho_ref=1.)
-
-
-def test_recipe_missing_raises():
-    grid = synthetic_grid()
-    with pytest.raises(TypeError, match="recipe"):
-        xwmb.WaterMassBudget(grid, rho_ref=1.)
-
-
-def test_deprecated_full_xbudget_dict_property():
-    grid, recipe = _collected()
-    wmb = xwmb.WaterMassBudget(grid, recipe, rho_ref=1.)
-    with pytest.warns(FutureWarning, match="full_xbudget_dict"):
-        assert wmb.full_xbudget_dict is wmb.full_recipe
-    with pytest.warns(FutureWarning, match="full_xbudget_dict"):
-        wmb.full_xbudget_dict = {"mass": {}}
-    assert wmb.full_recipe == {"mass": {}}
 
 
 def test_unfilled_recipe_raises_actionable_error():

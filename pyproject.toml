@@ -28,11 +28,12 @@ dependencies = [
     #
     # KNOWN ISSUE: sectionate <= 0.3.3 (the latest release) reads the private
     # `xgcm.Axis._boundary`, which xgcm 0.10 removed in favour of `.padding`, so
-    # it raises AttributeError on every region/section code path. The fix exists
-    # upstream but is unreleased, so no working floor can be pinned yet. Until
-    # sectionate (and the matching regionate) are released, `xgcm >= 0.10.0`
-    # above is satisfiable but the section/GriddedRegion paths are not usable.
-    "sectionate",
+    # it raises AttributeError. This is NOT confined to explicit sections: the
+    # default `region=None` also routes through `regionate.MaskRegions`, so every
+    # `WaterMassBudget` construction is affected. The floor below names the first
+    # fixed version so the resolver fails loudly at install time rather than
+    # installing a known-broken 0.3.3 and failing deep in a call stack.
+    "sectionate >= 0.3.4",
     # Imported directly (was only pulled in transitively via xwmt). 0.7.0 defaults
     # to name_scheme="v1"; xwmb uses the deprecated aggregate() path via
     # name_scheme="legacy" for now (see the planned v1-native migration). Cap below
