@@ -21,8 +21,9 @@ dependencies = [
     "xwmt >= 0.3.0",
     # Imported directly (was only pulled in transitively via xwmt). 0.7.0 defaults
     # to name_scheme="v1"; xwmb uses the deprecated aggregate() path via
-    # name_scheme="legacy" for now (see the planned v1-native migration).
-    "xbudget >= 0.7.0",
+    # name_scheme="legacy" for now (see the planned v1-native migration). Cap below
+    # 1.0.0, which removes the legacy name_scheme path this depends on.
+    "xbudget >= 0.7.0, < 1.0.0",
 ]
 
 [project.urls]
