@@ -77,7 +77,7 @@ def synthetic_grid():
     grid = xgcm.Grid(
         ds,
         coords = coords,
-        boundary = {"X": "extend", "Y":"extend", "Z":"extend", "T":"extend"},
+        padding = {"X": "extend", "Y":"extend", "Z":"extend", "T":"extend"},
         metrics = {("X","Y"): "area"},
         autoparse_metadata=False
     )

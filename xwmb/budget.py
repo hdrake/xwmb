@@ -65,7 +65,7 @@ class WaterMassBudget(WaterMassTransformations):
 
         Example
         --------
-        >>> grid = xgcm.Grid(ds, coords=coords, boundary=boundary)
+        >>> grid = xgcm.Grid(ds, coords=coords, padding=padding)
         >>> xbudget_dict = xbudget.load_preset_budget(model="MOM6")
         >>> xbudget.collect_budgets(grid, xbudget_dict)
         >>> wmb = xwmb.WaterMassBudget(grid, xbudget_dict)
@@ -82,7 +82,7 @@ class WaterMassBudget(WaterMassTransformations):
         )
         self.full_xbudget_dict = xbudget_dict
         self.assert_zero_transport = assert_zero_transport
-        self.boundary = {ax:self.grid.axes[ax]._boundary for ax in self.grid.axes.keys()}
+        self.padding = {ax:self.grid.axes[ax].padding for ax in self.grid.axes.keys()}
     
         if isinstance(region, regionate.GriddedRegion):
             self.region = region
@@ -312,12 +312,12 @@ class WaterMassBudget(WaterMassTransformations):
         lam_grid = Grid(
             ds_tmp,
             coords={'lam': self.target_coords},
-            boundary={'lam': 'extend'},
+            padding={'lam': 'extend'},
             autoparse_metadata=False
         )
 
         da_cumsum = lam_grid.cumsum(
-            ds_tmp[da.name], "lam", boundary="fill", fill_value=0.
+            ds_tmp[da.name], "lam", padding="fill", fill_value=0.
         ).chunk({self.target_coords["outer"]: -1})
 
         if reverse:
@@ -394,7 +394,7 @@ class WaterMassBudget(WaterMassTransformations):
                         )
             
                         self.grid._ds[f'{lambda_var}_i_sect'] = (
-                            self.grid.interp(self.grid._ds[f'{lambda_var}_sect'], "Z", boundary="extend")
+                            self.grid.interp(self.grid._ds[f'{lambda_var}_sect'], "Z", padding="extend")
                             .chunk({self.grid.axes['Z'].coords['outer']: -1})
                             .rename(f'{lambda_var}_i_sect')
                         )
@@ -413,12 +413,12 @@ class WaterMassBudget(WaterMassTransformations):
                         lam_itpXZ = self.grid.interp(
                             self.grid.interp(self.grid._ds[lambda_var], "X"),
                             "Z",
-                            boundary="extend"
+                            padding="extend"
                         ).chunk({self.grid.axes['Z'].coords['outer']: -1})
                         lam_itpYZ = self.grid.interp(
                             self.grid.interp(self.grid._ds[lambda_var], "Y"),
                             "Z",
-                            boundary="extend"
+                            padding="extend"
                         ).chunk({self.grid.axes['Z'].coords['outer']: -1})
 
                     divergence_X = self.grid.diff(
@@ -451,7 +451,7 @@ class WaterMassBudget(WaterMassTransformations):
             target_data = self.grid._ds[f'{lambda_var}_i']
         else:
             target_data = (
-                self.grid.interp(self.grid._ds[f"{lambda_var}"], "Z", boundary="extend")
+                self.grid.interp(self.grid._ds[f"{lambda_var}"], "Z", padding="extend")
                 .chunk({self.grid.axes['Z'].coords['outer']: -1})
                 .rename(f"{lambda_var}_i")
             )
@@ -497,7 +497,7 @@ class WaterMassBudget(WaterMassTransformations):
         lam_grid = Grid(
             self.grid._ds,
             coords={'lam': self.target_coords},
-            boundary={'lam': 'extend'},
+            padding={'lam': 'extend'},
             autoparse_metadata=False
         )
 
@@ -505,7 +505,7 @@ class WaterMassBudget(WaterMassTransformations):
             self.wmt['mass_source'] = lam_grid.interp(
                 self.grid._ds[f'mass_source_{suffix}'],
                 "lam",
-                boundary="extend"
+                padding="extend"
             ).assign_coords(
                 {self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]}
             )
@@ -514,7 +514,7 @@ class WaterMassBudget(WaterMassTransformations):
             convergent_transport = lam_grid.interp(
                 self.grid._ds[f'convergent_mass_transport_{suffix}'],
                 "lam",
-                boundary="extend"
+                padding="extend"
             )
             if integrate:
                 if "sect" in convergent_transport.dims:
@@ -560,7 +560,7 @@ class WaterMassBudget(WaterMassTransformations):
                 target_data = self.grid._ds[f"{lambda_var}_i"]
             else:
                 self.grid._ds[f"{lambda_var}_i_bounds"] = (
-                    self.grid.interp(self.grid._ds[f"{lambda_var}_bounds"], self.ax_bounds, boundary="extend")
+                    self.grid.interp(self.grid._ds[f"{lambda_var}_bounds"], self.ax_bounds, padding="extend")
                     .chunk({self.grid.axes[self.ax_bounds].coords['outer']: -1})
                     .rename(f"{lambda_var}_i_bounds")
                 )
@@ -592,7 +592,7 @@ class WaterMassBudget(WaterMassTransformations):
             lam_grid = Grid(
                 self.grid._ds,
                 coords={'lam': self.target_coords},
-                boundary={'lam': 'extend'},
+                padding={'lam': 'extend'},
                 autoparse_metadata=False
             )
             if integrate:
