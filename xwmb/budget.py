@@ -10,12 +10,38 @@ from xwmt.wm import add_gridcoords
 from xgcm import Grid
 import xbudget
 
+
+def _resolve_recipe(recipe, xbudget_dict, func):
+    """Return the recipe, honoring the deprecated ``xbudget_dict`` alias.
+
+    ``xbudget_dict`` was the historical name for the xbudget recipe dict (renamed
+    to ``recipe`` in xbudget 0.7.0). It is still accepted as a keyword so existing
+    callers keep working, but it warns and will be removed in a future version.
+    """
+    if xbudget_dict is not None:
+        if recipe is not None:
+            raise TypeError(
+                f"{func}() received both `recipe` and the deprecated "
+                f"`xbudget_dict`; pass only `recipe`."
+            )
+        warnings.warn(
+            f"The `xbudget_dict` argument of {func}() is deprecated and will be "
+            f"removed in a future version; pass the recipe as `recipe` instead.",
+            FutureWarning,
+            stacklevel=3,
+        )
+        return xbudget_dict
+    if recipe is None:
+        raise TypeError(f"{func}() missing required argument: 'recipe'")
+    return recipe
+
+
 class WaterMassBudget(WaterMassTransformations):
     """An extension of the WaterMass class that includes methods for WaterMass transformation analysis."""
     def __init__(
         self,
         grid,
-        xbudget_dict,
+        recipe=None,
         region=None,
         teos10=True,
         cp=3992.,
@@ -23,7 +49,9 @@ class WaterMassBudget(WaterMassTransformations):
         method="default",
         rebin=False,
         decompose=[],
-        assert_zero_transport=False
+        assert_zero_transport=False,
+        *,
+        xbudget_dict=None
         ):
         """
         Create a new WaterMassBudget object from an input xgcm.Grid and xbudget dictionary.
@@ -32,7 +60,7 @@ class WaterMassBudget(WaterMassTransformations):
         ----------
         grid : xgcm.Grid
             Contains information about ocean model grid coordinates, metrics, and data variables.
-        xbudget_dict : dict
+        recipe : dict
             Nested dictionary containing information about lambda and tendency variable names.
             See `xwmt/conventions` for examples of how this dictionary should be structured
             or the `xbudget` package: https://github.com/hdrake/xbudget
@@ -66,20 +94,21 @@ class WaterMassBudget(WaterMassTransformations):
         Example
         --------
         >>> grid = xgcm.Grid(ds, coords=coords, padding=padding)
-        >>> xbudget_dict = xbudget.load_preset_budget(model="MOM6")
-        >>> xbudget.collect_budgets(grid, xbudget_dict, name_scheme="legacy")
-        >>> wmb = xwmb.WaterMassBudget(grid, xbudget_dict)
+        >>> recipe = xbudget.load_preset_budget(model="MOM6")
+        >>> xbudget.collect_budgets(grid, recipe, name_scheme="legacy")
+        >>> wmb = xwmb.WaterMassBudget(grid, recipe)
         """
+        recipe = _resolve_recipe(recipe, xbudget_dict, "WaterMassBudget")
 
         # xbudget.aggregate() reads the `var` fields only a name_scheme="legacy"
         # collect_budgets run fills into the recipe; xbudget >= 0.7 deprecates it
         # (FutureWarning) and it requires the caller to have collected with
         # name_scheme="legacy". The warning is xwmb's to act on -- via the planned
-        # migration to xbudget.BudgetQuery(grid, xbudget_dict).aggregate(...), which
+        # migration to xbudget.BudgetQuery(grid, recipe).aggregate(...), which
         # works with the default v1 output -- not the end user's, so silence it here.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", FutureWarning)
-            simple_budgets = xbudget.aggregate(xbudget_dict, decompose=decompose)
+            simple_budgets = xbudget.aggregate(recipe, decompose=decompose)
         super().__init__(
             grid,
             simple_budgets,
@@ -89,8 +118,9 @@ class WaterMassBudget(WaterMassTransformations):
             method=method,
             rebin=rebin
         )
-        self.full_xbudget_dict = xbudget_dict
+        self.full_recipe = recipe
         self.assert_zero_transport = assert_zero_transport
+
         self.padding = {ax:self.grid.axes[ax].padding for ax in self.grid.axes.keys()}
     
         if isinstance(region, regionate.GriddedRegion):
@@ -120,6 +150,17 @@ class WaterMassBudget(WaterMassTransformations):
                 self.grid
             ).region_dict[0]
             self.assert_zero_transport = True
+
+    @property
+    def full_xbudget_dict(self):
+        """Deprecated alias for :attr:`full_recipe` (renamed in step with xbudget 0.7.0)."""
+        warnings.warn(
+            "`WaterMassBudget.full_xbudget_dict` is deprecated and will be removed "
+            "in a future version; use `.full_recipe` instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return self.full_recipe
 
     def mass_budget(self, lambda_name, greater_than=False, integrate=True, along_section=False, bins=None, default_bins=None):
         """
@@ -369,7 +410,7 @@ class WaterMassBudget(WaterMassTransformations):
             raise ValueError("Cannot have both `integrate=False` and `along_section=True`.")
             
         if not self.assert_zero_transport:
-            lateral_transports = self.full_xbudget_dict['mass']['rhs']['sum']['advection']['sum']['lateral']
+            lateral_transports = self.full_recipe['mass']['rhs']['sum']['advection']['sum']['lateral']
             if "sum" in lateral_transports:
                 kwargs = {**kwargs, **{
                         f"{di_shorthand}tr":

@@ -88,7 +88,7 @@ def synthetic_grid():
 def test_mass_budget():
     grid = synthetic_grid()
 
-    xbudget_dict = {
+    recipe = {
         "mass": {
             "thickness": "thickness",
             "rhs": {"sum": {"advection": {"sum": {"lateral": {"sum": {
@@ -101,11 +101,11 @@ def test_mass_budget():
 
     # xbudget >= 0.7 defaults to name_scheme="v1"; WaterMassBudget still uses the
     # deprecated aggregate() path, which needs the recipe filled in by a legacy run.
-    xbudget.collect_budgets(grid, xbudget_dict, name_scheme="legacy")
+    xbudget.collect_budgets(grid, recipe, name_scheme="legacy")
 
     wmb = xwmb.WaterMassBudget(
         grid,
-        xbudget_dict,
+        recipe,
         rebin=False,
         rho_ref = 1.
     )
