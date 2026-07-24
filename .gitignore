@@ -4,3 +4,7 @@ __pycache__
 
 # Version file generated from the git tag by hatch-vcs at build time.
 xwmb/_version.py
+
+# Example datasets are downloaded on demand (Zenodo), not tracked.
+/data/*.nc
+/data/ecco/

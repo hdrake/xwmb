@@ -17,8 +17,40 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "regionate >= 0.5.6, < 0.6",
-    "xwmt >= 0.2.0, < 0.3",
+    # The topology-aware stack: every one of these now supports arbitrary
+    # `xgcm.Grid` topologies -- single-tile periodic, bipolar/tripolar north-fold
+    # (`padding={"Y": {"fold": pivot}}`), and genuinely multi-tile
+    # `face_connections` grids such as ECCOv4r4 lat-lon-cap / LLC90.
+    #
+    # The pre-release pins are deliberate and load-bearing: naming the `rc`
+    # explicitly is what allows pip to install it (PEP 440 admits pre-releases
+    # only for specifiers that mention one). Bump each to the final release as it
+    # lands.
+    #
+    # xgcm >= 0.10.1 renamed `boundary` -> `padding` (and removed `periodic`),
+    # added `cumsum(..., reverse=True)`, the bipolar north-fold boundary, and the
+    # multi-tile `face_connections` padding/vector-pad fixes.
+    "xgcm >= 0.10.1",
+    # xbudget >= 0.8.0: the recipe API. `collect_budgets` no longer mutates the
+    # recipe and `xbudget.aggregate()` is gone; recipes are read through
+    # `BudgetQuery`, which also resolves term names and carries the UDUNITS units
+    # that xwmb's derived-variable metadata is composed from.
+    "xbudget >= 0.8.0",
+    # sectionate >= 0.4.0rc1: topology-driven section finding (`grid_section`,
+    # `GriddedSection`) and `face_connections`-aware `convergent_transport` /
+    # `extract_tracer` (thread `f_c` for multi-tile grids). Used directly by xwmb.
+    "sectionate >= 0.4.0rc1",
+    # regionate >= 0.6.0rc1: `GriddedRegion` / `MaskRegion(s)` whose boundaries
+    # are first-class `sectionate.GriddedSection` objects carrying `i_c/j_c/f_c`.
+    "regionate >= 0.6.0rc1",
+    # xwmt >= 0.3.0rc1: WaterMassTransformations broadcasts across tiles via
+    # `_facedim` / `_horizontal_dims`, equations of state are delegated to `xeos`,
+    # and `xwmt.units` provides the cf-units algebra xwmb reuses.
+    "xwmt >= 0.3.0rc1",
+    # xeos >= 0.2.2: the equation of state behind xwmt's `eos=` argument. Declared
+    # directly because xwmb's public API exposes the choice. (xwmt itself requires
+    # `xeos[teos10] >= 0.2.3`, so the resolver will pick that up regardless.)
+    "xeos >= 0.2.2",
 ]
 
 [project.urls]
