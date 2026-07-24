@@ -17,8 +17,26 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "regionate >= 0.5.0",
-    "xwmt >= 0.1.0",
+    # Topology-aware stack: all four now support arbitrary xgcm.Grid topologies
+    # (single-tile periodic, bipolar/tripolar north-fold, and genuinely multi-tile
+    # `face_connections` grids such as ECCOv4r4 lat-lon-cap / LLC90).
+    #
+    # xgcm >= 0.10.1 renamed `boundary` -> `padding` (and dropped `periodic`),
+    # added `cumsum(..., reverse=True)`, the bipolar north-fold boundary, and the
+    # multi-tile `face_connections` padding/vector-pad fixes.
+    "xgcm >= 0.10.1",
+    # sectionate >= 0.3.4: topology-driven section-finding (`grid_section`,
+    # `GriddedSection`) and `face_connections`-aware `convergent_transport` /
+    # `extract_tracer` (thread `f_c` for multi-tile grids). Used directly by xwmb.
+    "sectionate >= 0.3.4",
+    # regionate >= 0.6.0: `GriddedRegion` / `MaskRegion(s)` whose boundaries are
+    # first-class `sectionate.GriddedSection` objects carrying `i_c/j_c/f_c`.
+    "regionate >= 0.6.0",
+    # xwmt >= 0.3.0: WaterMassTransformations broadcasts across tiles via
+    # `_facedim` / `_horizontal_dims`; equations of state delegated to `xeos`.
+    "xwmt >= 0.3.0",
+    # xbudget >= 0.6.0: budget-variable naming conventions (used directly).
+    "xbudget >= 0.6.0",
 ]
 
 [project.urls]

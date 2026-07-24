@@ -1,3 +1,7 @@
 .ipynb_checkpoints
 __pycache__
 /paper/data/*.nc
+
+# Example datasets are downloaded on demand (Zenodo), not tracked.
+/data/*.nc
+/data/ecco/
