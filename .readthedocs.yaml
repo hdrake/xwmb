@@ -4,6 +4,15 @@ build:
   os: ubuntu-24.04
   tools:
     python: "miniforge3-latest"
+  jobs:
+    post_checkout:
+      # RTD clones shallow, but installing xwmb resolves its version from the
+      # git tag via hatch-vcs, and the docs are titled with it
+      # (`docs/source/conf.py` reads it from the installed metadata). Without
+      # the tag they would say `.devN`. Tolerate failure: an already-complete
+      # clone makes `--unshallow` an error, which must not fail the build.
+      - git fetch --unshallow || true
+      - git fetch --tags || true
 
 sphinx:
   builder: html

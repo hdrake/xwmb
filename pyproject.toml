@@ -26,8 +26,25 @@ dependencies = [
 "Bugs/Issues/Features" = "https://github.com/hdrake/xwmb/issues"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+# The version comes from the git tag, not from a file in the tree. Releasing is
+# then a single act -- tag `vX.Y.Z` and publish the GitHub Release -- with no
+# second commit to remember, and no way for the tag and the built artifact to
+# disagree about which version they are.
 [tool.hatch.version]
-path = "xwmb/version.py"
+source = "vcs"
+
+# Drop the `+g<sha>` local segment. On a clean tag the version is exactly X.Y.Z
+# either way, but an untagged build would otherwise carry a PEP 440 *local*
+# version, which package indexes refuse outright. Untagged builds are
+# `X.Y.Z.devN` instead, which an index will accept.
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
+
+# Building writes the resolved version to `xwmb/_version.py`, which is gitignored
+# but *is* included in the sdist -- so `pip install` from the sdist, and
+# conda-forge's build from the PyPI sdist, both work without git present.
+[tool.hatch.build.hooks.vcs]
+version-file = "xwmb/_version.py"
