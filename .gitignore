@@ -1,3 +1,6 @@
 .ipynb_checkpoints
 __pycache__
 /paper/data/*.nc
+
+# Version file generated from the git tag by hatch-vcs at build time.
+xwmb/_version.py

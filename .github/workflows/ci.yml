@@ -26,7 +26,12 @@ jobs:
         with:
           access_token: ${{ github.token }}
       - name: Checkout source
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
+        with:
+          # `pip install -e .` resolves the version from the git tag via
+          # hatch-vcs; a shallow clone has no tag, so the installed package
+          # would report `0.1.devN` instead of the release line.
+          fetch-depth: 0
 
       - name: Conda setup
         uses: conda-incubator/setup-miniconda@v2
