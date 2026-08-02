@@ -8,3 +8,15 @@ dependencies:
   - pylint
   - pytest
   - pip
+  # The compiled/heavy transitive dependencies of the topology-aware stack, taken
+  # from conda-forge so that `pip install -e .` does not try to build them from
+  # source. regionate pulls in the geospatial set; xbudget's units inference needs
+  # cf-units (UDUNITS-2), which has no usable pure-python wheel.
+  - cf-units
+  - geopandas
+  - pyproj
+  - shapely
+  - regionmask
+  - gsw
+  - numba
+  - dask
