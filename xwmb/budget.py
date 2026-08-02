@@ -24,8 +24,15 @@ from .mass import (
     mass_tendency,
 )
 from .close import close_budget
+from .completeness import CompletenessReport, budget_completeness
 
-__all__ = ["WaterMassBudget", "mass_tendency", "close_budget"]
+__all__ = [
+    "WaterMassBudget",
+    "mass_tendency",
+    "close_budget",
+    "budget_completeness",
+    "CompletenessReport",
+]
 
 
 def _resolve_recipe(recipe, xbudget_dict, func):
@@ -51,6 +58,32 @@ def _resolve_recipe(recipe, xbudget_dict, func):
     if recipe is None:
         raise TypeError(f"{func}() missing required argument: 'recipe'")
     return recipe
+
+
+def _warn_unlabelled_area(grid):
+    """Warn once if the horizontal area metric carries no ``units``.
+
+    xbudget multiplies the area metric into essentially every term it
+    materializes, and it infers a term's units from its operands'. An unlabelled
+    area therefore does not cost one attribute -- it costs the units of the whole
+    budget, and of everything xwmt and xwmb derive downstream. The published MOM6
+    example file is one of the datasets that ships `areacello` unlabelled, so this
+    is the common case rather than the exotic one.
+    """
+    metrics = [da for das in grid._metrics.values() for da in das]
+    unlabelled = sorted(
+        {da.name for da in metrics if "units" not in da.attrs and da.name}
+    )
+    if unlabelled:
+        warnings.warn(
+            f"The grid metric(s) {', '.join(repr(n) for n in unlabelled)} carry no "
+            f"'units' attribute. xbudget multiplies the cell area into every term "
+            f"it materializes and infers units from its operands, so the derived "
+            f"budget variables will come back without units rather than with "
+            f"guessed ones. Label them before collecting the budget, e.g. "
+            f"`ds['areacello'].attrs['units'] = 'm2'`.",
+            stacklevel=3,
+        )
 
 
 class WaterMassBudget(WaterMassTransformations):
@@ -152,6 +185,8 @@ class WaterMassBudget(WaterMassTransformations):
         if assert_zero_transport:
             self.region.assert_zero_transport = True
         self.assert_zero_transport = self.region.assert_zero_transport
+
+        _warn_unlabelled_area(self.grid)
 
     @property
     def full_xbudget_dict(self):
@@ -295,5 +330,9 @@ class WaterMassBudget(WaterMassTransformations):
 
         if "mass_bounds" in self.wmt:
             mass_tendency(self.wmt)
-        close_budget(self.wmt)
+
+        # Audit before closing: whether the residual may be *called* spurious
+        # numerical mixing depends on nothing else being unaccounted for.
+        self.completeness = budget_completeness(self, self.wmt, lambda_name)
+        close_budget(self.wmt, report=self.completeness, lambda_name=lambda_name)
         return self.wmt
