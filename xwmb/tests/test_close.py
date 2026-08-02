@@ -87,6 +87,46 @@ def test_absent_terms_are_recorded_rather_than_aborting(single_tile_grid):
     assert "mass_source" in wmt.realized_transformation.attrs["xwmb_assumed_zero"]
 
 
+def test_explicit_transports_are_not_mistaken_for_a_missing_psi(fold_grid):
+    """A recipe whose transports are not under the MOM6 term names is not a gap.
+
+    ECCOv4r4 is exactly this case: its recipe expresses lateral advection as a
+    `lateral_divergence`, so `transport_varnames` finds nothing and the caller
+    passes `utr`/`vtr` explicitly. Psi is computed, and the budget is not missing
+    it. An audit that re-derived the names here would call a fully computed
+    transport absent -- which it did, until this test.
+    """
+    from .synthetic import mask_from_cells
+
+    recipe = synthetic_recipe()
+    del recipe["mass"]["rhs"]["sum"]["advection"]
+    xbudget.collect_budgets(fold_grid, recipe)
+
+    wmb = xwmb.WaterMassBudget(
+        fold_grid, recipe, mask_from_cells(fold_grid, [(3, 1), (3, 4)]), rho_ref=1.0
+    )
+    wmb.mass_budget("tracer", along_section=True, utr="umo", vtr="vmo")
+    assert "convergent_mass_transport" not in wmb.completeness.absent_terms
+    assert float(abs(wmb.wmt.convergent_mass_transport).max()) > 0.0
+
+
+def test_a_placeholder_zero_psi_is_a_gap(fold_grid):
+    """With no transport available at all, a regional Psi of zero *is* a gap."""
+    from .synthetic import mask_from_cells
+
+    recipe = synthetic_recipe()
+    del recipe["mass"]["rhs"]["sum"]["advection"]
+    xbudget.collect_budgets(fold_grid, recipe)
+
+    wmb = xwmb.WaterMassBudget(
+        fold_grid, recipe, mask_from_cells(fold_grid, [(3, 1), (3, 4)]), rho_ref=1.0
+    )
+    with pytest.warns(UserWarning, match="Psi"):
+        wmb.mass_budget("tracer", along_section=True)
+    assert "convergent_mass_transport" in wmb.completeness.absent_terms
+    assert "spurious_numerical_mixing" not in wmb.wmt
+
+
 def test_report_reduces_to_root_causes():
     report = CompletenessReport(
         missing_inputs={

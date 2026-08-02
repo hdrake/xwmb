@@ -31,7 +31,24 @@ from .coordinates import (
     vertical_grid,
 )
 
-__all__ = ["transport_varnames", "convergent_transport_term"]
+__all__ = [
+    "transport_varnames",
+    "convergent_transport_term",
+    "ZERO_BY_ASSERTION",
+    "ZERO_NO_TRANSPORTS",
+]
+
+#: Why an identically-zero convergent transport is zero. Stamped on the returned
+#: array as ``xwmb_zero_reason``, and read by :mod:`xwmb.completeness`: the first
+#: is a legitimate zero, the second is a gap in the budget.
+ZERO_BY_ASSERTION = (
+    "the region has no boundary across which mass can be transported "
+    "(`assert_zero_transport`)"
+)
+ZERO_NO_TRANSPORTS = (
+    "no lateral advective mass transport is available: the recipe declares none "
+    "under the expected term names, and none was passed as `utr`/`vtr`"
+)
 
 
 #: Recipe path to the differenced face transport, per horizontal direction.
@@ -110,10 +127,7 @@ def convergent_transport_term(
         return _annotate_transport(
             wmb, xr.DataArray(0.0), lambda_name, lambda_var, None, None,
             integrate=integrate,
-            comment=(
-                "Zero by assertion: the region has no boundary across which mass "
-                "can be transported (`assert_zero_transport`)."
-            ),
+            zero_reason=ZERO_BY_ASSERTION,
         )
 
     if utr is None or vtr is None:
@@ -122,10 +136,7 @@ def convergent_transport_term(
             return _annotate_transport(
                 wmb, xr.DataArray(0.0), lambda_name, lambda_var, None, None,
                 integrate=integrate,
-                comment=(
-                    "Zero: the recipe declares no lateral advective mass "
-                    "transport terms to compute a boundary transport from."
-                ),
+                zero_reason=ZERO_NO_TRANSPORTS,
             )
         utr = utr or names["utr"]
         vtr = vtr or names["vtr"]
@@ -170,7 +181,7 @@ def convergent_transport_term(
 
 def _annotate_transport(
     wmb, da, lambda_name, lambda_var, utr, vtr, *,
-    integrate=True, along_section=False, comment=None,
+    integrate=True, along_section=False, zero_reason=None,
 ):
     """Describe the convergent transport term.
 
@@ -212,7 +223,14 @@ def _annotate_transport(
         lambda_var=lambda_var,
         cell_methods=cell_methods,
         sources=sources,
-        extra={"comment": comment} if comment else None,
+        extra=(
+            {
+                "comment": f"Identically zero: {zero_reason}.",
+                "xwmb_zero_reason": zero_reason,
+            }
+            if zero_reason
+            else None
+        ),
     )
 
 

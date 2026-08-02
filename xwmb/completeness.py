@@ -119,7 +119,7 @@ def relevant_budgets(wmb, lambda_name):
 def budget_completeness(wmb, ds, lambda_name):
     """Audit a computed budget ``ds`` and return a :class:`CompletenessReport`."""
     from .mass import MASS_SOURCE_PATH, mass_source_varname
-    from .transport import transport_varnames
+    from .transport import ZERO_BY_ASSERTION
 
     query = wmb.query
     budgets = relevant_budgets(wmb, lambda_name)
@@ -151,14 +151,18 @@ def budget_completeness(wmb, ds, lambda_name):
     if "mass_tendency" not in ds:
         absent.append("mass_tendency")
 
-    if wmb.assert_zero_transport:
-        zero["convergent_mass_transport"] = (
-            "the region has no boundary to transport mass across "
-            "(`assert_zero_transport`)"
-        )
-    elif "convergent_mass_transport" not in ds:
+    # Psi is legitimately zero for a full-domain region, and a genuine gap when it
+    # is the placeholder zero returned because no transport was available at all.
+    # The two are told apart by the reason stamped on the term, not by re-deriving
+    # it here: a caller may perfectly well have supplied `utr`/`vtr` for a recipe
+    # whose transports are not under the term names `transport_varnames` looks for
+    # (ECCOv4r4 is exactly that case), and re-deriving would call that a gap.
+    conv = ds.get("convergent_mass_transport")
+    if conv is None:
         absent.append("convergent_mass_transport")
-    elif transport_varnames(query) is None:
+    elif conv.attrs.get("xwmb_zero_reason") == ZERO_BY_ASSERTION:
+        zero["convergent_mass_transport"] = ZERO_BY_ASSERTION
+    elif conv.attrs.get("xwmb_zero_reason"):
         absent.append("convergent_mass_transport")
 
     if "mass_source" in ds:

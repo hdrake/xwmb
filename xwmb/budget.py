@@ -335,5 +335,10 @@ class WaterMassBudget(WaterMassTransformations):
         # Audit before closing: whether the residual may be *called* spurious
         # numerical mixing depends on nothing else being unaccounted for.
         self.completeness = budget_completeness(self, self.wmt, lambda_name)
-        close_budget(self.wmt, report=self.completeness, lambda_name=lambda_name)
+        close_budget(
+            self.wmt,
+            report=self.completeness,
+            lambda_name=lambda_name,
+            lambda_var=lambda_var,
+        )
         return self.wmt

@@ -25,7 +25,7 @@ REALIZED_TERMS = (
 )
 
 
-def close_budget(ds, report=None, lambda_name=None):
+def close_budget(ds, report=None, lambda_name=None, lambda_var=None):
     """Compute the budget residual, and name it only if the budget is closed.
 
     Parameters
@@ -35,8 +35,9 @@ def close_budget(ds, report=None, lambda_name=None):
     report : CompletenessReport, optional
         The audit from :func:`xwmb.completeness.budget_completeness`. Without one
         the budget is assumed complete, and the residual is named as before.
-    lambda_name : str, optional
-        Used in the warning text and in the derived variables' metadata.
+    lambda_name, lambda_var : str, optional
+        The water-mass coordinate and the dataset variable holding it. Used in the
+        warning text and in the derived variables' metadata.
 
     Notes
     -----
@@ -46,7 +47,6 @@ def close_budget(ds, report=None, lambda_name=None):
     was missing -- left the user with no residual and no explanation for why.
     """
     lambda_name = lambda_name or ds.attrs.get("xwmt_lambda")
-    lambda_var = ds.attrs.get("xwmt_lambda_variable")
 
     present = [(name, sign) for name, sign in REALIZED_TERMS if name in ds]
     if not present:
