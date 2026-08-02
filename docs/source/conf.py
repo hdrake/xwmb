@@ -93,7 +93,14 @@ master_doc = 'index'
 
 #-- Build api
 # The trailing path is an *exclude* pattern: `xwmb/tests` became an importable
-# package when the test suite grew a `__init__.py`, and apidoc would otherwise
+# package when the test suite grew an `__init__.py`, and apidoc would otherwise
 # publish an API page for every test module.
+#
+# Every option comes before the two positionals, and the positionals are adjacent.
+# That is load-bearing, not style: apidoc's signature is
+# `[OPTIONS] -o <OUTPUT> <MODULE_PATH> [EXCLUDE_PATTERN ...]`, and with the module
+# path written before `-o` argparse cannot place the trailing exclude pattern --
+# it exits with "unrecognized arguments", which surfaces as the thoroughly
+# unhelpful `ConfigError: The configuration file ... called sys.exit()`.
 from sphinx.ext.apidoc import main
-main(['-f', '-M', '-e', '-T', '../../xwmb', '-o', 'api', '../../xwmb/tests'])
+main(['-f', '-M', '-e', '-T', '-o', 'api', '../../xwmb', '../../xwmb/tests'])
