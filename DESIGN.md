@@ -1,11 +1,13 @@
-# xwmb modernization — design notes
+# xwmb v0.7.0 — design notes
 
-This branch (`modernize-topology-stack`) updates `xwmb` to the topology-aware
-dependency stack and refactors the previously monolithic `budget.py` into small,
-single-responsibility modules. The public API is unchanged:
+This release updates `xwmb` to the topology-aware dependency stack, migrates to the
+xbudget 0.8.0 recipe API, gives every derived variable a description, and stops the
+budget residual from being called spurious numerical mixing when it is not. The
+public API is unchanged apart from the `xbudget_dict` → `recipe` rename, which the
+old spelling still satisfies with a `FutureWarning`:
 
 ```python
-wmb = xwmb.WaterMassBudget(grid, xbudget_dict, region=None)
+wmb = xwmb.WaterMassBudget(grid, recipe, region=None)
 wmt = wmb.mass_budget(lambda_name, greater_than=True)
 ```
 
@@ -14,14 +16,21 @@ wmt = wmb.mass_budget(lambda_name, greater_than=True)
 | package | old | new | why |
 |---|---|---|---|
 | xgcm | 0.9 | **>= 0.10.1** | `boundary`→`padding` rename, `periodic` dropped, `cumsum(..., reverse=True)`, north-fold + `face_connections` padding fixes |
-| sectionate | 0.3 | **>= 0.3.4** | topology-driven `grid_section`/`GriddedSection`; `f_c`-aware `convergent_transport`/`extract_tracer` |
-| regionate | 0.5 | **>= 0.6.0** | `GriddedRegion`/`MaskRegion(s)` whose boundaries are `sectionate.GriddedSection`s carrying `i_c/j_c/f_c` |
-| xwmt | 0.1 | **>= 0.3.0** | transforms broadcast across tiles via `_facedim`/`_horizontal_dims`; EOS via `xeos` |
-| xbudget | (transitive) | **>= 0.6.0** | now a direct dependency (`xbudget.aggregate`) |
+| xbudget | (transitive) | **>= 0.8.0** | now a direct dependency. The dict-walking engine and `xbudget.aggregate()` are gone; recipes are read through `BudgetQuery`, which also carries the UDUNITS units xwmb's metadata is composed from |
+| sectionate | 0.3 | **>= 0.4.0rc1** | topology-driven `grid_section`/`GriddedSection`; `f_c`-aware `convergent_transport`/`extract_tracer` |
+| regionate | 0.5 | **>= 0.6.0rc1** | `GriddedRegion`/`MaskRegion(s)` whose boundaries are `sectionate.GriddedSection`s carrying `i_c/j_c/f_c` |
+| xwmt | 0.1 | **>= 0.3.0rc1** | transforms broadcast across tiles via `_facedim`/`_horizontal_dims`; EOS via `xeos`; `xwmt.units` supplies the cf-units algebra |
+| xeos | (transitive) | **>= 0.2.2** | the equation of state behind `eos=`, now that xwmb's own API exposes the choice |
 
-All four dependencies now support **arbitrary `xgcm.Grid` topologies**: single-tile
+The pre-release pins are load-bearing: naming the `rc` explicitly is what lets pip
+install one at all (PEP 440 admits pre-releases only for specifiers that mention
+one). Bump each to the final release as it lands.
+
+Every dependency now supports **arbitrary `xgcm.Grid` topologies**: single-tile
 periodic, bipolar/tripolar north-fold (`padding={"Y": {"fold": ...}}`), and genuinely
-multi-tile `face_connections` grids (ECCOv4r4 lat-lon-cap / LLC90).
+multi-tile `face_connections` grids (ECCOv4r4 lat-lon-cap / LLC90). All three are
+exercised by data-free synthetic tests, which assert the discrete divergence theorem
+for a region straddling the fold seam and one straddling a tile seam.
 
 ## What the new APIs let us delete
 
@@ -55,7 +64,9 @@ xwmb/
   transport.py        convergent transport: along-section (sectionate, multi-tile)
                       and grid-cell divergence methods; mass-source term
   mass.py             layer mass, mass-snapshot bounds, mass_tendency
-  close.py            close_budget(): residual -> spurious numerical mixing
+  attrs.py            units and metadata for the derived variables
+  completeness.py     is the budget closed? -> CompletenessReport
+  close.py            close_budget(): realized -> residual -> spurious mixing
 ```
 
 Each budget term (`transformations`, `convergent_transport`, `mass_source`,
@@ -67,8 +78,48 @@ target coords -> transformations G(λ)     [transformations.py]
               -> mass bounds M(λ, t_bnds)  [mass.py]
               -> Ψ(λ), S(λ), layer mass    [transport.py, mass.py]
               -> mass_tendency ∂ₜM(λ)      [mass.py]
-              -> close budget (residual)   [close.py]
+              -> audit completeness         [completeness.py]
+              -> close budget (residual)    [close.py]
 ```
+
+## Reading a recipe (xbudget 0.8.0)
+
+`collect_budgets` no longer fills the recipe's `var` fields, and
+`xbudget.aggregate()` no longer exists. `WaterMassBudget` builds a
+`BudgetQuery(grid, recipe)`, keeps it as `self.query`, and feeds
+`query.aggregate(decompose=…)` to `xwmt`. Every variable name xwmb needs is then
+resolved through that query rather than hardcoded or dict-walked:
+
+| what | how |
+|---|---|
+| umo / vmo | `query.get_vars(("mass","rhs","advection","lateral",…))["difference"][0]` |
+| surface mass flux | `query.var(("mass","rhs","surface_exchange_flux"))` |
+| declared budget units | `query.budget_units("mass")` |
+| what did not materialize | `query.missing()`, `query.incomplete_terms()` |
+
+Hand-walking the recipe dict is no longer safe: `var: null` placeholders are gone,
+and a string operand may be a reference into the recipe's top-level `constants:`
+table rather than the name of a dataset variable.
+
+## Metadata
+
+`attrs.py` gives every derived variable UDUNITS-2 units, a `long_name`, CF
+`cell_methods`, and the xbudget provenance of its inputs. The unit algebra is
+`xwmt.units` (a `cf_units` wrapper) rather than a second implementation. Units are
+*composed* from the inputs — `rho_ref [kg m-3] × h [m] × areacello [m2] → kg`,
+`mass_bounds / dt → kg s-1` — and are **omitted** rather than guessed when an input
+is unlabelled, with `xwmb_units_source` recording which authority answered.
+
+## Closing the budget honestly
+
+The residual is interpretable as spurious numerical mixing only if nothing else is
+missing; anything that belongs in the budget and is not there lands in the residual
+wearing the name of something it is not. `completeness.py` audits the budget —
+inputs the recipe names that the dataset did not supply, and whether dM/dt, Ψ and S
+are present or *legitimately* zero — and `close_budget` emits
+`spurious_numerical_mixing` only when the audit is clean. Otherwise it still
+computes `residual`, but warns, names each gap, and stamps
+`xwmb_unaccounted_terms`.
 
 ## Multi-tile (`face_connections`) support
 

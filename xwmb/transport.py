@@ -23,6 +23,7 @@ import sectionate
 from . import attrs as _attrs
 from .coordinates import (
     accumulate_in_lambda,
+    rechunk_full,
     horizontal_grid,
     interp_to_center,
     interp_to_interfaces,
@@ -303,18 +304,14 @@ def _convergence_from_divergence(
 
     divergence_X = grid.diff(
         transform_to_lambda(
-            grid, grid._ds[utr].chunk({zc: -1}), target_coords, lam_XZ
-        )
-        .fillna(0.0)
-        .chunk({xo: -1}),
+            grid, rechunk_full(grid._ds[utr], zc), target_coords, lam_XZ
+        ).fillna(0.0),
         "X",
     )
     divergence_Y = grid.diff(
         transform_to_lambda(
-            grid, grid._ds[vtr].chunk({zc: -1}), target_coords, lam_YZ
-        )
-        .fillna(0.0)
-        .chunk({yo: -1}),
+            grid, rechunk_full(grid._ds[vtr], zc), target_coords, lam_YZ
+        ).fillna(0.0),
         "Y",
     )
     return -(divergence_X + divergence_Y) * region.mask

@@ -20,6 +20,7 @@ from xgcm import Grid
 from xwmt.wm import add_gridcoords
 
 __all__ = [
+    "rechunk_full",
     "lambda_grid",
     "horizontal_grid",
     "vertical_grid",
@@ -31,6 +32,26 @@ __all__ = [
     "interp_to_interfaces",
     "transform_to_lambda",
 ]
+
+
+def rechunk_full(da, dim):
+    """Collapse ``dim`` into a single chunk, touching only the data.
+
+    ``DataArray.chunk`` rechunks the array's *coordinates* as well, and a
+    dask-backed coordinate of object dtype -- a cftime time-bounds axis, say --
+    raises from inside xarray when it does (``zip() argument 2 is longer than
+    argument 1``). The published MOM6 example file carries exactly such a
+    coordinate (``time_bounds_since_init``), so every cumulative sum over it would
+    fail on real model output.
+
+    Rechunking a coordinate was never the intent anyway: a lambda accumulation
+    needs its *data* contiguous along the accumulation axis, and the coordinates
+    are along for the ride. Going through ``copy(data=...)`` does that and leaves
+    the coordinates exactly as they were.
+    """
+    if da.chunks is None or dim not in da.dims:
+        return da
+    return da.copy(data=da.data.rechunk({da.get_axis_num(dim): -1}))
 
 
 def horizontal_grid(grid):
@@ -215,7 +236,7 @@ def accumulate_in_lambda(grid, da, target_coords, greater_than=False, name=None)
     accumulated = lambda_grid(grid, target_coords).cumsum(
         da, "lam", padding="fill", fill_value=0.0, reverse=greater_than
     )
-    accumulated = accumulated.chunk({target_coords["outer"]: -1}).assign_coords(
+    accumulated = rechunk_full(accumulated, target_coords["outer"]).assign_coords(
         {target_coords["outer"]: grid._ds[target_coords["outer"]]}
     )
     if name is not None:
@@ -241,7 +262,7 @@ def interp_to_interfaces(grid, da, axis="Z"):
     outer = grid.axes[axis].coords["outer"]
     if getattr(grid, "_face_connections", None) is not None:
         grid = vertical_grid(grid, axis)
-    return grid.interp(da, axis, padding="extend").chunk({outer: -1})
+    return rechunk_full(grid.interp(da, axis, padding="extend"), outer)
 
 
 def transform_to_lambda(grid, da, target_coords, target_data, axis="Z"):

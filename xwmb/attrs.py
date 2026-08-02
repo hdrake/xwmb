@@ -171,6 +171,14 @@ def annotate(
     """
     strip_inherited_attrs(da)
 
+    # Normalize the spelling. Units taken straight off an input arrive however
+    # that input's author wrote them -- xbudget stamps "kg.s-1", xwmt writes
+    # "kg s-1" -- and both parse to the same thing, but a dataset whose variables
+    # disagree about how to spell one unit reads as though they are two.
+    normalized = _units.parse(units)
+    if normalized is not None:
+        units = _units.format_units(normalized)
+
     if units_source is None:
         units_source = "derived" if units is not None else "unknown"
 
@@ -185,10 +193,11 @@ def annotate(
         "xwmb_version": __version__,
     }
     if sources:
-        present = {k: v for k, v in sources.items() if v is not None}
-        attrs.update(collect_source_attrs(present))
-        if present:
-            attrs["xwmb_source_variables"] = ", ".join(sorted(present))
+        # `collect_source_attrs` also emits `xwmt_source_variables` naming them,
+        # so there is nothing for xwmb to add on top.
+        attrs.update(
+            collect_source_attrs({k: v for k, v in sources.items() if v is not None})
+        )
     if extra:
         attrs.update(extra)
 
