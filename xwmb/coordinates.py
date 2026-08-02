@@ -105,57 +105,45 @@ def vertical_grid(grid, axis="Z"):
     )
 
 
-def resolve_target_coords(
-    grid, lambda_var, lambda_name=None, bins=None, default_bins=None
-):
+def resolve_target_coords(grid, lambda_var, lambda_name=None, bins=None):
     """Ensure ``grid`` carries a ``Z_target`` axis for the lambda target bins.
 
     Returns ``(grid, target_coords)`` where ``target_coords`` is
     ``{"center": f"{lambda_var}_l_target", "outer": f"{lambda_var}_i_target"}``.
 
-    The target coordinates may be given explicitly as ``bins`` (a 1D array of bin
-    edges), supplied by the caller as coordinates already present in ``grid._ds``,
-    or derived from the pre-existing lambda coordinates. ``default_bins`` is the
-    deprecated spelling of ``bins``.
+    ``bins`` is a 1D array of bin edges, the string ``"default"`` for a
+    finely-spaced default grid for ``lambda_name``, or ``None`` to use target
+    coordinates already present in ``grid._ds`` (or derive them from the
+    pre-existing lambda coordinates).
     """
     target_coords = {
         "center": f"{lambda_var}_l_target",
         "outer": f"{lambda_var}_i_target",
     }
 
-    if default_bins is not None:
-        warnings.warn(
-            "`default_bins` is deprecated and will be removed in a future version. "
-            "Use `bins` instead. "
-            "Note: The behavior has changed - `bins=None` is now the default, "
-            "and you should pass an array to `bins` to specify the edges of custom bins.",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        if default_bins is True:
-            if "Z_target" in grid.axes:
-                raise ValueError(
-                    "Cannot pass `default_bins=True` when `Z_target` in "
-                    "`WaterMassBudget.grid.axes`."
-                )
-            return add_default_gridcoords(grid, lambda_var, lambda_name), target_coords
-        if default_bins is False:
-            bins = None
-        elif len(default_bins) == 3 and all(
-            isinstance(x, (int, float, np.integer, np.floating)) for x in default_bins
-        ):
-            bins = np.arange(*default_bins)
-        else:
-            raise TypeError(
-                f"Boolean or list of 3 numbers expected, got "
-                f"{type(default_bins).__name__}"
+    if isinstance(bins, str):
+        if bins != "default":
+            raise ValueError(
+                f"The only string accepted by `bins` is 'default'; got {bins!r}. "
+                f"Otherwise pass a 1D array of bin edges, or None to use the "
+                f"target coordinates already in the dataset."
             )
+        if "Z_target" in grid.axes:
+            raise ValueError(
+                "Cannot pass `bins='default'` when `Z_target` is already in "
+                "`WaterMassBudget.grid.axes`."
+            )
+        return add_default_gridcoords(grid, lambda_var, lambda_name), target_coords
 
     if isinstance(bins, xr.DataArray):
         bins = bins.values
     if bins is not None:
-        if not isinstance(bins, np.ndarray):
-            raise TypeError(f"None or array expected, got {type(bins).__name__}")
+        bins = np.asarray(bins)
+        if bins.ndim != 1:
+            raise TypeError(
+                f"`bins` must be a 1D array of bin edges, 'default', or None; got "
+                f"an array of {bins.ndim} dimensions."
+            )
         return add_bins_gridcoords(grid, lambda_var, bins), target_coords
 
     if "Z_target" in grid.axes:

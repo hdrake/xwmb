@@ -1,10 +1,10 @@
-"""The xbudget 0.8.0 recipe API, and the deprecation of the old spelling."""
+"""The xbudget 0.8.0 recipe API."""
 
+import numpy as np
 import pytest
 import xbudget
 
 import xwmb
-from xwmb.budget import _resolve_recipe
 from xwmb.mass import MASS_SOURCE_PATH, mass_source_varname
 from xwmb.transport import transport_varnames
 
@@ -12,60 +12,60 @@ from .synthetic import synthetic_recipe
 
 
 # ---------------------------------------------------------------------------
-# `xbudget_dict` -> `recipe`
+# The renamed arguments are renamed, not aliased
 # ---------------------------------------------------------------------------
 
 
-def test_recipe_passed_positionally():
-    recipe = {"mass": {}}
-    assert _resolve_recipe(recipe, None, "f") is recipe
+def test_recipe_is_required(single_tile_grid):
+    with pytest.raises(TypeError):
+        xwmb.WaterMassBudget(single_tile_grid)
 
 
-def test_deprecated_keyword_still_works_but_warns():
-    recipe = {"mass": {}}
-    with pytest.warns(FutureWarning, match="xbudget_dict"):
-        assert _resolve_recipe(None, recipe, "f") is recipe
+def test_the_old_spellings_are_gone(single_tile_grid):
+    """v0.7.0 renames without aliasing: the whole stack breaks compatibility here,
+    so carrying a shim would only have let a caller *think* they had migrated."""
+    recipe = synthetic_recipe()
+    xbudget.collect_budgets(single_tile_grid, recipe)
+    with pytest.raises(TypeError):
+        xwmb.WaterMassBudget(single_tile_grid, xbudget_dict=recipe)
+    with pytest.raises(TypeError):
+        xwmb.WaterMassBudget(single_tile_grid, recipe, teos10=True)
+    wmb = xwmb.WaterMassBudget(single_tile_grid, recipe, rho_ref=1.0)
+    assert not hasattr(wmb, "full_xbudget_dict")
 
 
-def test_passing_both_is_an_error():
-    with pytest.raises(TypeError, match="both"):
-        _resolve_recipe({"a": 1}, {"b": 2}, "f")
+def test_default_bins_is_spelled_on_bins_now(single_tile_grid):
+    recipe = synthetic_recipe()
+    xbudget.collect_budgets(single_tile_grid, recipe)
+    with pytest.raises(TypeError):
+        xwmb.WaterMassBudget(single_tile_grid, recipe, rho_ref=1.0).mass_budget(
+            "tracer", default_bins=True
+        )
 
 
-def test_passing_neither_is_an_error():
-    with pytest.raises(TypeError, match="missing required argument"):
-        _resolve_recipe(None, None, "f")
+def test_bins_default_builds_a_target_grid(single_tile_grid):
+    """`bins="default"` replaces the capability that only `default_bins=True` had.
+
+    Exercised at the coordinate layer: the default bin edges are only defined for
+    the density/heat/salt lambdas, and the synthetic recipe's tracer is none of
+    those.
+    """
+    from xwmb.coordinates import resolve_target_coords
+
+    grid, target = resolve_target_coords(
+        single_tile_grid, "sigma", "sigma2", bins="default"
+    )
+    assert "Z_target" in grid.axes
+    edges = grid._ds[target["outer"]].values
+    assert edges[0] == 0.0 and np.isclose(edges[1] - edges[0], 0.05)
 
 
-def test_falsy_recipe_is_still_a_recipe():
-    """Presence must be tested with `is None`, not truthiness: an empty recipe is
-    a legitimate (if useless) argument, and silently rejecting it would report a
-    missing argument for one that was passed."""
-    with pytest.warns(FutureWarning):
-        assert _resolve_recipe(None, {}, "f") == {}
-
-
-def test_deprecated_attribute_reads_and_writes(single_tile_grid):
+def test_bins_rejects_an_unknown_string(single_tile_grid):
     recipe = synthetic_recipe()
     xbudget.collect_budgets(single_tile_grid, recipe)
     wmb = xwmb.WaterMassBudget(single_tile_grid, recipe, rho_ref=1.0)
-
-    with pytest.warns(FutureWarning, match="full_xbudget_dict"):
-        assert wmb.full_xbudget_dict is recipe
-    replacement = {"mass": {}}
-    with pytest.warns(FutureWarning, match="full_xbudget_dict"):
-        wmb.full_xbudget_dict = replacement
-    assert wmb.full_recipe is replacement
-
-
-def test_deprecated_constructor_keyword(single_tile_grid):
-    recipe = synthetic_recipe()
-    xbudget.collect_budgets(single_tile_grid, recipe)
-    with pytest.warns(FutureWarning, match="xbudget_dict"):
-        wmb = xwmb.WaterMassBudget(
-            single_tile_grid, xbudget_dict=recipe, rho_ref=1.0
-        )
-    assert wmb.full_recipe is recipe
+    with pytest.raises(ValueError, match="only string accepted"):
+        wmb.mass_budget("tracer", bins="defaults")
 
 
 # ---------------------------------------------------------------------------

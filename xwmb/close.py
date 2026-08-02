@@ -32,7 +32,7 @@ def close_budget(ds, report=None, lambda_name=None, lambda_var=None):
     ----------
     ds : xr.Dataset
         The budget terms, modified in place.
-    report : CompletenessReport, optional
+    report : :class:`~xwmb.completeness.CompletenessReport`, optional
         The audit from :func:`xwmb.completeness.budget_completeness`. Without one
         the budget is assumed complete, and the residual is named as before.
     lambda_name, lambda_var : str, optional

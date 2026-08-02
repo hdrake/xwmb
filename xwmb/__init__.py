@@ -1,11 +1,8 @@
-from .budget import (
-    WaterMassBudget,
-    budget_completeness,
-    close_budget,
-    mass_tendency,
-    CompletenessReport,
-)
+from .budget import WaterMassBudget
+from .close import close_budget
+from .completeness import CompletenessReport, budget_completeness
 from .coordinates import horizontal_grid
+from .mass import mass_tendency
 from .regions import normalize_region, RegionBoundary
 from .version import __version__
 

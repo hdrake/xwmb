@@ -8,3 +8,6 @@ xwmb/_version.py
 # Example datasets are downloaded on demand (Zenodo), not tracked.
 /data/*.nc
 /data/ecco/
+
+# Sphinx build output.
+docs/_build/

@@ -117,7 +117,13 @@ def relevant_budgets(wmb, lambda_name):
 
 
 def budget_completeness(wmb, ds, lambda_name):
-    """Audit a computed budget ``ds`` and return a :class:`CompletenessReport`."""
+    """Audit a budget ``ds``, returning a
+    :class:`~xwmb.completeness.CompletenessReport`.
+
+    The reference is fully qualified because the class is exported at two names
+    (here and as ``xwmb.CompletenessReport``), which leaves a bare reference
+    ambiguous -- and the docs build treats warnings as errors.
+    """
     from .mass import MASS_SOURCE_PATH, mass_source_varname
     from .transport import ZERO_BY_ASSERTION
 

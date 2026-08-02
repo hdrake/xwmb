@@ -92,5 +92,8 @@ html_show_copyright = False
 master_doc = 'index'
 
 #-- Build api
+# The trailing path is an *exclude* pattern: `xwmb/tests` became an importable
+# package when the test suite grew a `__init__.py`, and apidoc would otherwise
+# publish an API page for every test module.
 from sphinx.ext.apidoc import main
-main(['-f', '-M', '-e', '-T', '../../xwmb', '-o', 'api' ])
+main(['-f', '-M', '-e', '-T', '../../xwmb', '-o', 'api', '../../xwmb/tests'])

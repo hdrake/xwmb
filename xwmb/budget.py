@@ -24,40 +24,14 @@ from .mass import (
     mass_tendency,
 )
 from .close import close_budget
-from .completeness import CompletenessReport, budget_completeness
+from .completeness import budget_completeness
 
-__all__ = [
-    "WaterMassBudget",
-    "mass_tendency",
-    "close_budget",
-    "budget_completeness",
-    "CompletenessReport",
-]
-
-
-def _resolve_recipe(recipe, xbudget_dict, func):
-    """Accept the deprecated ``xbudget_dict`` spelling of ``recipe``.
-
-    xbudget 0.7.0 renamed "convention"/"xbudget_dict" to "recipe" throughout;
-    this mirrors ``xwmt.wmt._resolve_recipe`` so that the two packages deprecate
-    the old name on the same terms.
-    """
-    if xbudget_dict is not None:
-        if recipe is not None:
-            raise TypeError(
-                f"{func}() received both `recipe` and the deprecated "
-                f"`xbudget_dict`; pass only `recipe`."
-            )
-        warnings.warn(
-            f"The `xbudget_dict` argument of {func}() is deprecated and will be "
-            f"removed in a future version; pass the recipe as `recipe` instead.",
-            FutureWarning,
-            stacklevel=3,
-        )
-        return xbudget_dict
-    if recipe is None:
-        raise TypeError(f"{func}() missing required argument: 'recipe'")
-    return recipe
+# Only the class this module defines. Re-exporting the helpers it happens to
+# import would document each of them at three names (`xwmb.x`, `xwmb.budget.x`
+# and `xwmb.<home>.x`), which sphinx-apidoc reports as a duplicate object
+# description -- and, with `fail_on_warning`, fails the docs build over. The
+# package's public surface is assembled in `xwmb/__init__.py` instead.
+__all__ = ["WaterMassBudget"]
 
 
 def _warn_unlabelled_area(grid):
@@ -92,7 +66,7 @@ class WaterMassBudget(WaterMassTransformations):
     def __init__(
         self,
         grid,
-        recipe=None,
+        recipe,
         region=None,
         eos="teos10",
         cp=3992.0,
@@ -103,9 +77,6 @@ class WaterMassBudget(WaterMassTransformations):
         rebin=False,
         decompose=(),
         assert_zero_transport=False,
-        teos10=None,
-        *,
-        xbudget_dict=None,
     ):
         """Create a ``WaterMassBudget`` from an ``xgcm.Grid`` and an xbudget recipe.
 
@@ -140,12 +111,6 @@ class WaterMassBudget(WaterMassTransformations):
         assert_zero_transport : bool (default: False)
             Assert the net boundary transport vanishes, accelerating the calculation
             for domains where it is already known to be zero.
-        teos10 : bool, optional
-            Deprecated back-compat alias for ``eos`` (``True``→"teos10",
-            ``False``→``None``). Prefer ``eos``.
-        xbudget_dict : dict, optional
-            Deprecated alias for ``recipe``. Passing it emits a ``FutureWarning``;
-            passing both raises.
 
         Example
         -------
@@ -154,8 +119,6 @@ class WaterMassBudget(WaterMassTransformations):
         >>> xbudget.collect_budgets(grid, recipe)
         >>> wmb = xwmb.WaterMassBudget(grid, recipe)
         """
-        recipe = _resolve_recipe(recipe, xbudget_dict, "WaterMassBudget")
-
         # xbudget 0.8.0 reads a recipe through a query object rather than by
         # walking the dict: `collect_budgets` no longer fills the recipe's `var`
         # fields, and the module-level `aggregate()` helper is gone. The query is
@@ -164,17 +127,16 @@ class WaterMassBudget(WaterMassTransformations):
         # names the evaluator happens to produce.
         self.query = xbudget.BudgetQuery(grid, recipe)
 
-        super_kwargs = dict(
-            cp=cp, rho_ref=rho_ref, t_var=t_var, s_var=s_var, method=method, rebin=rebin
-        )
-        if teos10 is not None:
-            super_kwargs["teos10"] = teos10
-        else:
-            super_kwargs["eos"] = eos
         super().__init__(
             grid,
             self.query.aggregate(decompose=decompose),
-            **super_kwargs,
+            eos=eos,
+            cp=cp,
+            rho_ref=rho_ref,
+            t_var=t_var,
+            s_var=s_var,
+            method=method,
+            rebin=rebin,
         )
 
         self.full_recipe = recipe
@@ -188,27 +150,6 @@ class WaterMassBudget(WaterMassTransformations):
 
         _warn_unlabelled_area(self.grid)
 
-    @property
-    def full_xbudget_dict(self):
-        """Deprecated alias for :attr:`full_recipe` (renamed with xbudget 0.7.0)."""
-        warnings.warn(
-            "`full_xbudget_dict` is deprecated and will be removed in a future "
-            "version; use `full_recipe` instead.",
-            FutureWarning,
-            stacklevel=2,
-        )
-        return self.full_recipe
-
-    @full_xbudget_dict.setter
-    def full_xbudget_dict(self, value):
-        warnings.warn(
-            "`full_xbudget_dict` is deprecated and will be removed in a future "
-            "version; use `full_recipe` instead.",
-            FutureWarning,
-            stacklevel=2,
-        )
-        self.full_recipe = value
-
     def mass_budget(
         self,
         lambda_name,
@@ -216,7 +157,6 @@ class WaterMassBudget(WaterMassTransformations):
         integrate=True,
         along_section=False,
         bins=None,
-        default_bins=None,
         utr=None,
         vtr=None,
         mass_source_var=None,
@@ -235,14 +175,10 @@ class WaterMassBudget(WaterMassTransformations):
             Compute the convergent transport along the region boundary with
             ``sectionate`` (required for multi-tile grids; preserves the
             along-boundary streamfunction structure). Requires ``integrate=True``.
-        bins : None or array (default: None)
+        bins : None, array, or "default" (default: None)
             If None: assume the lambda bins are already in the dataset.
             If an array: a 1D array of bin edges.
-        default_bins : deprecated
-            Deprecated parameter. Use `bins` instead.
-            If True: generate the default bins for `lambda_name`.
-            If False: corresponds to ``bins=None``.
-            If a list: corresponds to ``bins=np.arange(*default_bins)``.
+            If "default": a finely-spaced default grid for ``lambda_name``.
         utr, vtr : str, optional
             Names of the (zonal, meridional) face mass-transport variables in
             ``grid._ds``. By default they are resolved from the recipe, which must
@@ -266,7 +202,7 @@ class WaterMassBudget(WaterMassTransformations):
         if lambda_var not in self.grid._ds:
             self.get_density(lambda_var)
         self.grid, self.target_coords = resolve_target_coords(
-            self.grid, lambda_var, lambda_name, bins=bins, default_bins=default_bins
+            self.grid, lambda_var, lambda_name, bins=bins
         )
         self.ax_bounds = "Z" if "Z_bounds" not in self.grid.axes else "Z_bounds"
         self.prebinned = all(
