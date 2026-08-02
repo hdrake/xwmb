@@ -35,6 +35,6 @@ def mom6_grid():
 
 
 @pytest.fixture(scope="module")
-def mom6_xbudget():
+def mom6_recipe():
     xbudget = pytest.importorskip("xbudget")
     return xbudget.load_preset_budget(model="MOM6")

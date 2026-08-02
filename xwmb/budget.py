@@ -7,6 +7,8 @@ transport across the region boundary, the surface mass source, the mass storage
 term lives in a dedicated module; this class only wires them together.
 """
 
+import warnings
+
 import xbudget
 
 from xwmt.wmt import WaterMassTransformations
@@ -26,13 +28,38 @@ from .close import close_budget
 __all__ = ["WaterMassBudget", "mass_tendency", "close_budget"]
 
 
+def _resolve_recipe(recipe, xbudget_dict, func):
+    """Accept the deprecated ``xbudget_dict`` spelling of ``recipe``.
+
+    xbudget 0.7.0 renamed "convention"/"xbudget_dict" to "recipe" throughout;
+    this mirrors ``xwmt.wmt._resolve_recipe`` so that the two packages deprecate
+    the old name on the same terms.
+    """
+    if xbudget_dict is not None:
+        if recipe is not None:
+            raise TypeError(
+                f"{func}() received both `recipe` and the deprecated "
+                f"`xbudget_dict`; pass only `recipe`."
+            )
+        warnings.warn(
+            f"The `xbudget_dict` argument of {func}() is deprecated and will be "
+            f"removed in a future version; pass the recipe as `recipe` instead.",
+            FutureWarning,
+            stacklevel=3,
+        )
+        return xbudget_dict
+    if recipe is None:
+        raise TypeError(f"{func}() missing required argument: 'recipe'")
+    return recipe
+
+
 class WaterMassBudget(WaterMassTransformations):
     """Lazy, closed water-mass budget in a sub-domain of a C-grid ocean model."""
 
     def __init__(
         self,
         grid,
-        xbudget_dict,
+        recipe=None,
         region=None,
         eos="teos10",
         cp=3992.0,
@@ -41,20 +68,25 @@ class WaterMassBudget(WaterMassTransformations):
         s_var="absolute",
         method="default",
         rebin=False,
-        decompose=[],
+        decompose=(),
         assert_zero_transport=False,
         teos10=None,
+        *,
+        xbudget_dict=None,
     ):
-        """Create a ``WaterMassBudget`` from an ``xgcm.Grid`` and an xbudget dict.
+        """Create a ``WaterMassBudget`` from an ``xgcm.Grid`` and an xbudget recipe.
 
         Parameters
         ----------
         grid : xgcm.Grid
             Ocean-model grid coordinates, metrics, and data variables. May carry
             ``face_connections`` for multi-tile (e.g. ECCO LLC90) grids.
-        xbudget_dict : dict
-            Nested budget dictionary (see the ``xbudget`` package) mapping lambda and
-            tendency variable names.
+        recipe : dict
+            A budget recipe: the nested dictionary naming each budget's lambda,
+            thickness, and tendency variables. Load one with
+            ``xbudget.load_preset_budget(model=...)`` (see ``xbudget/recipes`` for
+            the shipped presets) and materialize its terms into ``grid`` with
+            ``xbudget.collect_budgets(grid, recipe)`` before constructing this.
         region : regionate.GriddedRegion, regionate.MaskRegion, tuple, xr.DataArray, or None
             The sub-domain. A ``(lons, lats)`` tuple builds a ``GriddedRegion``; a
             boolean ``xr.DataArray`` builds a ``MaskRegion`` (largest connected
@@ -69,15 +101,36 @@ class WaterMassBudget(WaterMassTransformations):
             Vertical-transformation method: "default", "xhistogram", or "xgcm".
         rebin : bool (default: False)
             Force transformation into the target coordinates even when they exist.
-        decompose : list (default: [])
-            Decompose these summed xbudget terms into their constituent parts.
+        decompose : str or iterable of str (default: ())
+            Decompose these summed recipe terms into their constituent parts.
+            Matching is exact (an xbudget 0.8.0 semantic, not a substring match).
         assert_zero_transport : bool (default: False)
             Assert the net boundary transport vanishes, accelerating the calculation
             for domains where it is already known to be zero.
         teos10 : bool, optional
             Deprecated back-compat alias for ``eos`` (``True``→"teos10",
             ``False``→``None``). Prefer ``eos``.
+        xbudget_dict : dict, optional
+            Deprecated alias for ``recipe``. Passing it emits a ``FutureWarning``;
+            passing both raises.
+
+        Example
+        -------
+        >>> grid = xgcm.Grid(ds, coords=coords, padding=padding)
+        >>> recipe = xbudget.load_preset_budget(model="MOM6")
+        >>> xbudget.collect_budgets(grid, recipe)
+        >>> wmb = xwmb.WaterMassBudget(grid, recipe)
         """
+        recipe = _resolve_recipe(recipe, xbudget_dict, "WaterMassBudget")
+
+        # xbudget 0.8.0 reads a recipe through a query object rather than by
+        # walking the dict: `collect_budgets` no longer fills the recipe's `var`
+        # fields, and the module-level `aggregate()` helper is gone. The query is
+        # kept on the instance because the budget terms below resolve their
+        # variable names (and units) through it too, instead of hardcoding the
+        # names the evaluator happens to produce.
+        self.query = xbudget.BudgetQuery(grid, recipe)
+
         super_kwargs = dict(
             cp=cp, rho_ref=rho_ref, t_var=t_var, s_var=s_var, method=method, rebin=rebin
         )
@@ -87,11 +140,11 @@ class WaterMassBudget(WaterMassTransformations):
             super_kwargs["eos"] = eos
         super().__init__(
             grid,
-            xbudget.aggregate(xbudget_dict, decompose=decompose),
+            self.query.aggregate(decompose=decompose),
             **super_kwargs,
         )
 
-        self.full_xbudget_dict = xbudget_dict
+        self.full_recipe = recipe
         self.padding = {ax: self.grid.axes[ax].padding for ax in self.grid.axes.keys()}
 
         # Normalize the region against the (deep-copied) grid we compute on.
@@ -99,6 +152,27 @@ class WaterMassBudget(WaterMassTransformations):
         if assert_zero_transport:
             self.region.assert_zero_transport = True
         self.assert_zero_transport = self.region.assert_zero_transport
+
+    @property
+    def full_xbudget_dict(self):
+        """Deprecated alias for :attr:`full_recipe` (renamed with xbudget 0.7.0)."""
+        warnings.warn(
+            "`full_xbudget_dict` is deprecated and will be removed in a future "
+            "version; use `full_recipe` instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        return self.full_recipe
+
+    @full_xbudget_dict.setter
+    def full_xbudget_dict(self, value):
+        warnings.warn(
+            "`full_xbudget_dict` is deprecated and will be removed in a future "
+            "version; use `full_recipe` instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
+        self.full_recipe = value
 
     def mass_budget(
         self,

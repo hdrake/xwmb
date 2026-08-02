@@ -21,14 +21,34 @@ from .coordinates import (
 )
 
 __all__ = [
-    "MASS_SOURCE_VARNAME",
+    "MASS_SOURCE_PATH",
+    "mass_source_varname",
     "layer_mass_term",
     "mass_source_term",
     "mass_bounds_term",
     "mass_tendency",
 ]
 
-MASS_SOURCE_VARNAME = "mass_rhs_sum_surface_exchange_flux"
+#: Recipe path to the surface mass (freshwater) exchange flux.
+MASS_SOURCE_PATH = ("mass", "rhs", "surface_exchange_flux")
+
+
+def mass_source_varname(query):
+    """The dataset variable holding the surface mass flux, or ``None``.
+
+    Resolved through ``xbudget.BudgetQuery`` rather than hardcoded. The name this
+    used to be spelled with, ``"mass_rhs_sum_surface_exchange_flux"``, was the
+    xbudget 0.6.x one; 0.8.0 dropped the operator infixes from derived-variable
+    names, so the hardcoded string silently matched nothing and the mass source
+    was quietly dropped from every budget.
+
+    Returns ``None`` both when the recipe has no such term and when it has one
+    that did not materialize -- in either case there is no mass source to add.
+    """
+    try:
+        return query.var(MASS_SOURCE_PATH)
+    except KeyError:
+        return None
 
 
 def _horizontal_dims(wmb, da):
@@ -80,12 +100,13 @@ def mass_source_term(
     """Surface mass (freshwater) source, cumulatively integrated in lambda.
 
     ``mass_source_var`` names the surface mass-flux density variable in
-    ``grid._ds`` (defaults to the MOM6-convention name). Returns ``None`` when it is
-    absent.
+    ``grid._ds``; by default it is resolved from the recipe. Returns ``None`` when
+    the recipe declares no such term, or when it declares one that the dataset did
+    not supply the inputs for.
     """
     grid = wmb.grid
-    mass_source_var = mass_source_var or MASS_SOURCE_VARNAME
-    if mass_source_var not in grid._ds:
+    mass_source_var = mass_source_var or mass_source_varname(wmb.query)
+    if mass_source_var is None or mass_source_var not in grid._ds:
         return None
     lambda_var = wmb.get_lambda_var(lambda_name)
     suffix = "greater_than" if greater_than else "less_than"

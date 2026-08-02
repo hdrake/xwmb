@@ -32,20 +32,49 @@ from .coordinates import (
 __all__ = ["transport_varnames", "convergent_transport_term"]
 
 
-def transport_varnames(full_xbudget_dict):
-    """Extract the (zonal, meridional) mass-transport variable names from the budget.
+#: Recipe path to the differenced face transport, per horizontal direction.
+_TRANSPORT_PATHS = {
+    "utr": (
+        "mass",
+        "rhs",
+        "advection",
+        "lateral",
+        "zonal_convergence",
+        "zonal_divergence",
+    ),
+    "vtr": (
+        "mass",
+        "rhs",
+        "advection",
+        "lateral",
+        "meridional_convergence",
+        "meridional_divergence",
+    ),
+}
 
-    Returns ``{"utr": ..., "vtr": ...}`` or ``None`` when the budget carries no
+
+def transport_varnames(query):
+    """Extract the (zonal, meridional) mass-transport variable names from the recipe.
+
+    Returns ``{"utr": ..., "vtr": ...}`` or ``None`` when the recipe carries no
     lateral advective transport terms.
+
+    Resolution goes through ``xbudget.BudgetQuery`` rather than walking the recipe
+    dict by hand. Hand-walking is no longer safe under xbudget 0.8.0: recipes no
+    longer carry ``var: null`` placeholders to read, and a string operand may be a
+    reference into the recipe's top-level ``constants:`` table rather than the name
+    of a dataset variable.
     """
-    lateral = full_xbudget_dict["mass"]["rhs"]["sum"]["advection"]["sum"]["lateral"]
-    if "sum" not in lateral:
-        return None
     names = {}
-    for di, short in zip(["zonal", "meridional"], ["u", "v"]):
-        names[f"{short}tr"] = lateral["sum"][f"{di}_convergence"]["product"][
-            f"{di}_divergence"
-        ]["difference"][f"{di}_mass_transport"]
+    for short, path in _TRANSPORT_PATHS.items():
+        try:
+            operands = query.get_vars(path)
+        except KeyError:
+            return None
+        difference = operands.get("difference")
+        if not difference:
+            return None
+        names[short] = difference[0]
     return names
 
 
@@ -65,10 +94,11 @@ def convergent_transport_term(
     """Compute the convergent mass transport term of the budget.
 
     ``utr``/``vtr`` name the (zonal, meridional) face mass-transport variables in
-    ``grid._ds``. If omitted they are extracted from the (MOM6-convention) budget
-    dict; other conventions (e.g. ECCO) should pass them explicitly. Stores
-    per-layer intermediates on ``wmb.grid._ds`` and returns the term (integrated
-    over the region when ``integrate=True``).
+    ``grid._ds``. If omitted they are resolved from the recipe (which must follow
+    the MOM6 convention's ``zonal_convergence``/``meridional_convergence`` term
+    names); other conventions should pass them explicitly. Stores per-layer
+    intermediates on ``wmb.grid._ds`` and returns the term (integrated over the
+    region when ``integrate=True``).
     """
     grid = wmb.grid
     lambda_var = wmb.get_lambda_var(lambda_name)
@@ -78,7 +108,7 @@ def convergent_transport_term(
         return xr.DataArray(0.0)
 
     if utr is None or vtr is None:
-        names = transport_varnames(wmb.full_xbudget_dict)
+        names = transport_varnames(wmb.query)
         if names is None:
             return xr.DataArray(0.0)
         utr = utr or names["utr"]

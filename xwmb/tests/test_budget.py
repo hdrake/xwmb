@@ -7,16 +7,16 @@ import xwmb
 
 
 @pytest.fixture(scope="module")
-def collected(mom6_grid, mom6_xbudget):
+def collected(mom6_grid, mom6_recipe):
     import xbudget
 
-    xbudget.collect_budgets(mom6_grid, mom6_xbudget)
-    return mom6_grid, mom6_xbudget
+    xbudget.collect_budgets(mom6_grid, mom6_recipe)
+    return mom6_grid, mom6_recipe
 
 
 def test_global_budget_runs_and_is_finite(collected):
-    grid, xbudget_dict = collected
-    wmb = xwmb.WaterMassBudget(grid, xbudget_dict)
+    grid, recipe = collected
+    wmb = xwmb.WaterMassBudget(grid, recipe)
     wmt = wmb.mass_budget("sigma2", greater_than=True).squeeze().load()
     # The full-domain net boundary transport must vanish.
     assert float(np.abs(wmt.convergent_mass_transport).max()) == 0.0
@@ -26,17 +26,17 @@ def test_global_budget_runs_and_is_finite(collected):
 
 def test_regional_transport_methods_agree(collected):
     """The along-section and grid-cell divergence transports must agree."""
-    grid, xbudget_dict = collected
+    grid, recipe = collected
     mask = grid._ds.geolat < -30.0
 
     along = (
-        xwmb.WaterMassBudget(grid, xbudget_dict, mask)
+        xwmb.WaterMassBudget(grid, recipe, mask)
         .mass_budget("sigma2", greater_than=True, along_section=True)
         .squeeze()
         .load()
     )
     diverg = (
-        xwmb.WaterMassBudget(grid, xbudget_dict, mask)
+        xwmb.WaterMassBudget(grid, recipe, mask)
         .mass_budget("sigma2", greater_than=True, along_section=False)
         .squeeze()
         .load()
@@ -50,11 +50,11 @@ def test_regional_transport_methods_agree(collected):
 
 
 def test_greater_than_tuple_region(collected):
-    grid, xbudget_dict = collected
+    grid, recipe = collected
     lons = np.array([-70.0, -40.0, 30.0, 5.0])
     lats = np.array([50.0, 75.0, 60.0, 44.0])
     wmt = (
-        xwmb.WaterMassBudget(grid, xbudget_dict, (lons, lats))
+        xwmb.WaterMassBudget(grid, recipe, (lons, lats))
         .mass_budget("sigma2", greater_than=True)
         .squeeze()
         .load()
