@@ -12,18 +12,24 @@ xwmb: xarray-enabled Water Mass transformation Budgets (WMB) using structured oc
 - [`regionate`](https://github.com/hdrake/regionate): for converting between gridded masks and the closed sections that bound them
 - [`xbudget`](https://github.com/hdrake/xbudget): for model-agnostic wrangling of multi-level tracer budgets
 - [`xwmt`](https://github.com/NOAA-GFDL/xwmt): for computing bulk water mass transformations from these budgets
+- [`xeos`](https://github.com/hdrake/xeos): for the seawater equation of state
 
-As of `xwmb` 0.6.0, the whole stack is **topology-aware**: budgets can be computed on
+As of `xwmb` 0.7.0, the whole stack is **topology-aware**: budgets can be computed on
 arbitrary `xgcm.Grid` topologies — single-tile periodic and bipolar/tripolar
-north-fold grids, and genuinely multi-tile grids defined by `face_connections`
-(e.g. ECCOv4r4 lat-lon-cap / LLC90). See `examples/ECCO_AABW_watermass_budget.ipynb`
-for a full σ₂ budget of Antarctic Bottom Water on the 13-tile ECCO grid.
+north-fold grids (`padding={"Y": {"fold": ...}}`), and genuinely multi-tile grids
+defined by `face_connections` (e.g. ECCOv4r4 lat-lon-cap / LLC90). See
+`examples/ECCO_AABW_watermass_budget.ipynb` for a full σ₂ budget of Antarctic Bottom
+Water on the 13-tile ECCO grid.
 
-Documentation is not yet available, but the core API is illustrated in the example notebooks here and in each of the dependency packages. The basic usage is unchanged:
+Documentation is not yet available, but the core API is illustrated in the example notebooks here and in each of the dependency packages. The basic usage is:
 
 ```python
-import xwmb
-wmb = xwmb.WaterMassBudget(grid, xbudget_dict, region=region)
+import xbudget, xwmb
+
+recipe = xbudget.load_preset_budget(model="MOM6")
+xbudget.collect_budgets(grid, recipe)
+
+wmb = xwmb.WaterMassBudget(grid, recipe, region=region)
 wmt = wmb.mass_budget("sigma2", greater_than=True)   # a closed budget as a function of σ₂
 ```
 
@@ -31,6 +37,13 @@ wmt = wmb.mass_budget("sigma2", greater_than=True)   # a closed budget as a func
 boolean `xr.DataArray` mask, or `None` (the full domain). On multi-tile grids, pass
 `along_section=True` so the boundary transport is computed with `sectionate`
 (face-index aware).
+
+Every variable in the returned budget carries UDUNITS-2 units, a `long_name`, and
+the provenance of the model diagnostics it was built from. And `xwmb` will only call
+the budget's residual `spurious_numerical_mixing` when the budget is actually closed:
+if a term the recipe names did not materialize, or dM/dt, Ψ or S is missing, you get
+a `residual` and a warning naming exactly what is unaccounted for. Inspect the audit
+directly with `wmb.completeness`.
 
 If you use `xwmb`, please cite the companion manuscript: Henri F. Drake, Shanice Bailey, Raphael Dussin, Stephen M. Griffies, John Krasting, Graeme MacGilchrist, Geoffrey Stanley, Jan-Erik Tesdal, Jan D. Zika. Water Mass Transformation Budgets in Finite-Volume Generalized Vertical Coordinate Ocean Models. Journal of Advances in Modeling Earth Systems. 08 March 2025. DOI: [doi.org/10.1029/2024MS004383](https://doi.org/10.1029/2024MS004383)
 
