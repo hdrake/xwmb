@@ -5,7 +5,7 @@ import pytest
 import xbudget
 
 import xwmb
-from xwmb.completeness import CompletenessReport, budget_completeness
+from xwmb.completeness import CompletenessReport
 
 from .synthetic import synthetic_recipe
 

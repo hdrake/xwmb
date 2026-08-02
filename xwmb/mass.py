@@ -13,7 +13,6 @@ face dimension on multi-tile grids).
 import warnings
 
 import numpy as np
-import xarray as xr
 from xwmt import units as _units
 
 from . import attrs as _attrs

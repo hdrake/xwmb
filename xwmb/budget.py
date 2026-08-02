@@ -245,11 +245,12 @@ class WaterMassBudget(WaterMassTransformations):
             If a list: corresponds to ``bins=np.arange(*default_bins)``.
         utr, vtr : str, optional
             Names of the (zonal, meridional) face mass-transport variables in
-            ``grid._ds``. Defaults extract them from the (MOM6-convention) budget
-            dict; pass explicitly for other conventions (e.g. ECCO ``"umo"``/``"vmo"``).
+            ``grid._ds``. By default they are resolved from the recipe, which must
+            then use the MOM6 convention's ``zonal_convergence`` /
+            ``meridional_convergence`` term names; pass them explicitly otherwise.
         mass_source_var : str, optional
-            Name of the surface mass-flux density variable (defaults to the
-            MOM6-convention name).
+            Name of the surface mass-flux variable. By default it is resolved from
+            the recipe's ``("mass", "rhs", "surface_exchange_flux")`` term.
 
         Returns
         -------

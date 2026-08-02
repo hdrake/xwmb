@@ -115,8 +115,9 @@ def common_units(specs, term=None):
     whichever operand happened to be first, the result is left undescribed and
     the disagreement is reported. Mirrors ``xwmt.wmt._sum_terms``.
     """
+    specs = list(specs)
     known = [s for s in specs if s is not None]
-    if not known or len(known) != len(list(specs)):
+    if not known or len(known) != len(specs):
         return None
     if not _units.same_units(known):
         warnings.warn(
