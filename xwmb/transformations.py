@@ -11,6 +11,10 @@ over ``self._horizontal_dims``, which includes the face dimension when the grid
 carries ``face_connections``.
 """
 
+import xarray as xr
+
+from . import attrs as _attrs
+
 __all__ = ["compute_transformations", "BOUNDARY_FLUX_TERMS"]
 
 #: Surface/boundary processes summed into a single ``boundary_fluxes`` term.
@@ -45,13 +49,29 @@ def compute_transformations(
     )
 
     # For a "greater than" water mass the normal to the isosurface points the other
-    # way, so every transformation rate flips sign.
+    # way, so every transformation rate flips sign. Negation does not change what
+    # the quantity is, so xwmt's units and provenance must survive it -- which the
+    # default `keep_attrs=False` would silently discard.
     if greater_than:
-        for v in wmt.data_vars:
-            wmt[v] = wmt[v] * -1
+        with xr.set_options(keep_attrs=True):
+            for v in wmt.data_vars:
+                wmt[v] = wmt[v] * -1
 
     present = [t for t in BOUNDARY_FLUX_TERMS if t in wmt]
     if present:
-        wmt["boundary_fluxes"] = sum(wmt[t] for t in present)
+        total = sum(wmt[t] for t in present)
+        _attrs.annotate(
+            total,
+            "boundary_fluxes",
+            units=_attrs.common_units(
+                [_attrs.units_of(wmt[t]) for t in present], term="boundary_fluxes"
+            ),
+            units_source="source",
+            lambda_name=lambda_name,
+            lambda_var=wmt_obj.get_lambda_var(lambda_name),
+            cell_methods=wmt[present[0]].attrs.get("cell_methods"),
+            extra={"xwmb_summed_terms": ", ".join(present)},
+        )
+        wmt["boundary_fluxes"] = total
 
     return wmt

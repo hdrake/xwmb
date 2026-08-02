@@ -20,6 +20,7 @@ integrated in lambda (dense-to-light for ``greater_than``) by
 import xarray as xr
 import sectionate
 
+from . import attrs as _attrs
 from .coordinates import (
     accumulate_in_lambda,
     horizontal_grid,
@@ -105,12 +106,26 @@ def convergent_transport_term(
     suffix = "greater_than" if greater_than else "less_than"
 
     if region.assert_zero_transport:
-        return xr.DataArray(0.0)
+        return _annotate_transport(
+            wmb, xr.DataArray(0.0), lambda_name, lambda_var, None, None,
+            integrate=integrate,
+            comment=(
+                "Zero by assertion: the region has no boundary across which mass "
+                "can be transported (`assert_zero_transport`)."
+            ),
+        )
 
     if utr is None or vtr is None:
         names = transport_varnames(wmb.query)
         if names is None:
-            return xr.DataArray(0.0)
+            return _annotate_transport(
+                wmb, xr.DataArray(0.0), lambda_name, lambda_var, None, None,
+                integrate=integrate,
+                comment=(
+                    "Zero: the recipe declares no lateral advective mass "
+                    "transport terms to compute a boundary transport from."
+                ),
+            )
         utr = utr or names["utr"]
         vtr = vtr or names["vtr"]
     if not all(v in grid._ds for v in (utr, vtr)):
@@ -138,14 +153,74 @@ def convergent_transport_term(
     grid._ds[accumulated.name] = accumulated
 
     conv = interp_to_center(grid, accumulated, target_coords)
-    if not integrate:
-        return conv
+    if integrate:
+        if "sect" in conv.dims:
+            grid._ds["convergent_mass_transport_along"] = conv
+            conv = conv.sum("sect")
+        else:
+            area_dims = [d for d in wmb._horizontal_dims if d in conv.dims]
+            conv = conv.sum(area_dims)
+    return _annotate_transport(
+        wmb, conv, lambda_name, lambda_var, utr, vtr,
+        integrate=integrate,
+        along_section=along_section,
+    )
 
-    if "sect" in conv.dims:
-        grid._ds["convergent_mass_transport_along"] = conv
-        return conv.sum("sect")
-    area_dims = [d for d in wmb._horizontal_dims if d in conv.dims]
-    return conv.sum(area_dims)
+
+def _annotate_transport(
+    wmb, da, lambda_name, lambda_var, utr, vtr, *,
+    integrate=True, along_section=False, comment=None,
+):
+    """Describe the convergent transport term.
+
+    Every step from the face transports to this term -- the conservative remap
+    into lambda layers, the cumulative sum in lambda, the boundary or divergence
+    sum, and the interpolation to layer centres -- preserves units, so the face
+    transports' own units carry through. They must agree with each other: a
+    zonal transport in kg s-1 and a meridional one in m3 s-1 do not sum to
+    anything.
+    """
+    ds = wmb.grid._ds
+    sources = {name: ds.get(name) for name in (utr, vtr) if name is not None}
+    if sources:
+        units = _attrs.common_units(
+            [_attrs.units_of(v) for v in sources.values()],
+            term="convergent_mass_transport",
+        )
+        units_source = "source" if units else None
+    else:
+        # An identically-zero transport still has units -- those of the mass budget
+        # it belongs to, as the recipe declares them. Leaving it undescribed would
+        # poison the units of every sum it later takes part in.
+        units = _budget_units(wmb)
+        units_source = "recipe" if units else None
+
+    if integrate and along_section:
+        cell_methods = "sect: sum"
+    elif integrate:
+        cell_methods = " ".join(f"{d}: sum" for d in wmb._horizontal_dims)
+    else:
+        cell_methods = None
+
+    return _attrs.annotate(
+        da,
+        "convergent_mass_transport",
+        units=units,
+        units_source=units_source,
+        lambda_name=lambda_name,
+        lambda_var=lambda_var,
+        cell_methods=cell_methods,
+        sources=sources,
+        extra={"comment": comment} if comment else None,
+    )
+
+
+def _budget_units(wmb):
+    """The units the recipe declares for the mass budget, if it declares any."""
+    try:
+        return wmb.query.budget_units("mass")
+    except (KeyError, AttributeError):  # pragma: no cover - recipe without `mass`
+        return None
 
 
 def _convergence_along_section(
