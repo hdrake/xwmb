@@ -1,706 +1,280 @@
-import xarray as xr
-import numpy as np
+"""The ``WaterMassBudget`` orchestrator.
+
+``WaterMassBudget`` extends ``xwmt.WaterMassTransformations`` with the remaining
+terms of a closed water-mass budget (Drake et al. 2025): the convergent mass
+transport across the region boundary, the surface mass source, the mass storage
+(tendency), and the residual spurious numerical mixing. The heavy lifting for each
+term lives in a dedicated module; this class only wires them together.
+"""
+
 import warnings
 
-import regionate
-import sectionate
-
-from xwmt.wmt import WaterMassTransformations
-from xwmt.wm import add_gridcoords
-from xgcm import Grid
 import xbudget
 
+from xwmt.wmt import WaterMassTransformations
+
+from .regions import normalize_region
+from .coordinates import resolve_target_coords
+from .transformations import compute_transformations
+from .transport import convergent_transport_term
+from .mass import (
+    layer_mass_term,
+    mass_source_term,
+    mass_bounds_term,
+    mass_tendency,
+)
+from .close import close_budget
+from .completeness import budget_completeness
+
+# Only the class this module defines. Re-exporting the helpers it happens to
+# import would document each of them at three names (`xwmb.x`, `xwmb.budget.x`
+# and `xwmb.<home>.x`), which sphinx-apidoc reports as a duplicate object
+# description -- and, with `fail_on_warning`, fails the docs build over. The
+# package's public surface is assembled in `xwmb/__init__.py` instead.
+__all__ = ["WaterMassBudget"]
+
+
+def _warn_unlabelled_area(grid):
+    """Warn once if the horizontal area metric carries no ``units``.
+
+    xbudget multiplies the area metric into essentially every term it
+    materializes, and it infers a term's units from its operands'. An unlabelled
+    area therefore does not cost one attribute -- it costs the units of the whole
+    budget, and of everything xwmt and xwmb derive downstream. The published MOM6
+    example file is one of the datasets that ships `areacello` unlabelled, so this
+    is the common case rather than the exotic one.
+    """
+    metrics = [da for das in grid._metrics.values() for da in das]
+    unlabelled = sorted(
+        {da.name for da in metrics if "units" not in da.attrs and da.name}
+    )
+    if unlabelled:
+        warnings.warn(
+            f"The grid metric(s) {', '.join(repr(n) for n in unlabelled)} carry no "
+            f"'units' attribute. xbudget multiplies the cell area into every term "
+            f"it materializes and infers units from its operands, so the derived "
+            f"budget variables will come back without units rather than with "
+            f"guessed ones. Label them before collecting the budget, e.g. "
+            f"`ds['areacello'].attrs['units'] = 'm2'`.",
+            stacklevel=3,
+        )
+
+
 class WaterMassBudget(WaterMassTransformations):
-    """An extension of the WaterMass class that includes methods for WaterMass transformation analysis."""
+    """Lazy, closed water-mass budget in a sub-domain of a C-grid ocean model."""
+
     def __init__(
         self,
         grid,
-        xbudget_dict,
+        recipe,
         region=None,
-        teos10=True,
-        cp=3992.,
-        rho_ref=1035.,
+        eos="teos10",
+        cp=3992.0,
+        rho_ref=1035.0,
+        t_var="conservative",
+        s_var="absolute",
         method="default",
         rebin=False,
-        decompose=[],
-        assert_zero_transport=False
-        ):
-        """
-        Create a new WaterMassBudget object from an input xgcm.Grid and xbudget dictionary.
+        decompose=(),
+        assert_zero_transport=False,
+    ):
+        """Create a ``WaterMassBudget`` from an ``xgcm.Grid`` and an xbudget recipe.
 
         Parameters
         ----------
         grid : xgcm.Grid
-            Contains information about ocean model grid coordinates, metrics, and data variables.
-        xbudget_dict : dict
-            Nested dictionary containing information about lambda and tendency variable names.
-            See `xwmt/conventions` for examples of how this dictionary should be structured
-            or the `xbudget` package: https://github.com/hdrake/xbudget
-        region : regionate.GriddedRegion, tuple, or xr.DataArray (default: None)
-            If tuple: must be of length two with (lons, lats) arrays of equal length; uses
-            regionate.GriddedRegion to create the region that approximates these coordinates.
-            If xr.DataArray: assume bool dtype and use regionate.MaskRegions to create region
-            based on this mask (pick the contiguous region boundary with the longest perimeter).
-            If None, the region defaults to the full `xgcm.Grid` domain.
-        teos10 : bool (default: True)
-            Use Thermodynamic Equation Of Seawater - 2010 (TEOS-10). True by default.
-        cp : float (default: 3992.0, the MOM6 default value)
-            Value of specific heat capacity.
-        rho_ref : float (default: 1035.0, the MOM6 default value)
-            Value of reference potential density. Note: WaterMass is assumed to be Boussinesq.
+            Ocean-model grid coordinates, metrics, and data variables. May carry
+            ``face_connections`` for multi-tile (e.g. ECCO LLC90) grids.
+        recipe : dict
+            A budget recipe: the nested dictionary naming each budget's lambda,
+            thickness, and tendency variables. Load one with
+            ``xbudget.load_preset_budget(model=...)`` (see ``xbudget/recipes`` for
+            the shipped presets) and materialize its terms into ``grid`` with
+            ``xbudget.collect_budgets(grid, recipe)`` before constructing this.
+        region : regionate.GriddedRegion, regionate.MaskRegion, tuple, xr.DataArray, or None
+            The sub-domain. A ``(lons, lats)`` tuple builds a ``GriddedRegion``; a
+            boolean ``xr.DataArray`` builds a ``MaskRegion`` (largest connected
+            component); ``None`` uses the full domain (and asserts zero net boundary
+            transport). See :func:`xwmb.regions.normalize_region`.
+        eos : str or None (default: "teos10")
+            Equation of state, forwarded to ``xwmt`` (via ``xeos``). Pass ``None`` to
+            require pre-computed ``alpha``/``beta``/density in the grid dataset.
+        cp, rho_ref : float
+            Specific heat capacity and reference (Boussinesq) density.
         method : str (default: "default")
-            Method used for vertical transformations.
-            Supported options: "default", "xhistogram", "xgcm".
-            If "default", use "xhistogram" for area-integrated calculations (`integrate=True`)
-            or "xgcm" for column-wise calculations (`integrate=False`) for efficiency.
-            The other options force the use of a specific method, perhaps at the cost of efficiency.
+            Vertical-transformation method: "default", "xhistogram", or "xgcm".
         rebin : bool (default: False)
-            Set to True to force a transformation into the target coordinates, even if these
-            coordinates already exist in the `grid` data structure.
-        decompose : list (default: [])
-            Decompose these summed xbudget terms into their constituent parts.
+            Force transformation into the target coordinates even when they exist.
+        decompose : str or iterable of str (default: ())
+            Decompose these summed recipe terms into their constituent parts.
+            Matching is exact (an xbudget 0.8.0 semantic, not a substring match).
         assert_zero_transport : bool (default: False)
-            Optionally assert that the diapycnal transport term is zero, accelerating the
-            calculations for domains where it is already known that this term vanishes.
+            Assert the net boundary transport vanishes, accelerating the calculation
+            for domains where it is already known to be zero.
 
         Example
-        --------
-        >>> grid = xgcm.Grid(ds, coords=coords, boundary=boundary)
-        >>> xbudget_dict = xbudget.load_preset_budget(model="MOM6")
-        >>> xbudget.collect_budgets(grid, xbudget_dict)
-        >>> wmb = xwmb.WaterMassBudget(grid, xbudget_dict)
+        -------
+        >>> grid = xgcm.Grid(ds, coords=coords, padding=padding)
+        >>> recipe = xbudget.load_preset_budget(model="MOM6")
+        >>> xbudget.collect_budgets(grid, recipe)
+        >>> wmb = xwmb.WaterMassBudget(grid, recipe)
         """
+        # xbudget 0.8.0 reads a recipe through a query object rather than by
+        # walking the dict: `collect_budgets` no longer fills the recipe's `var`
+        # fields, and the module-level `aggregate()` helper is gone. The query is
+        # kept on the instance because the budget terms below resolve their
+        # variable names (and units) through it too, instead of hardcoding the
+        # names the evaluator happens to produce.
+        self.query = xbudget.BudgetQuery(grid, recipe)
 
         super().__init__(
             grid,
-            xbudget.aggregate(xbudget_dict, decompose=decompose),
-            teos10=teos10,
+            self.query.aggregate(decompose=decompose),
+            eos=eos,
             cp=cp,
             rho_ref=rho_ref,
+            t_var=t_var,
+            s_var=s_var,
             method=method,
-            rebin=rebin
+            rebin=rebin,
         )
-        self.full_xbudget_dict = xbudget_dict
-        self.assert_zero_transport = assert_zero_transport
-        self.boundary = {ax:self.grid.axes[ax]._boundary for ax in self.grid.axes.keys()}
-    
-        if isinstance(region, regionate.GriddedRegion):
-            self.region = region
-        elif type(region) is tuple:
-            if len(region)==2:
-                lons, lats = region[0], region[1]
-                self.region = regionate.GriddedRegion(
-                    "WaterMass",
-                    lons,
-                    lats,
-                    self.grid
-                )
-        elif isinstance(region, (xr.DataArray)):
-            mask = region
-            self.region = regionate.MaskRegions(
-                mask,
-                self.grid
-            ).region_dict[0]
-        elif region is None:
-            mask = xr.ones_like(
-                self.grid._ds[self.grid.axes['Y'].coords['center']] *
-                self.grid._ds[self.grid.axes['X'].coords['center']]
-            )
-            self.region = regionate.MaskRegions(
-                mask,
-                self.grid
-            ).region_dict[0]
-            self.assert_zero_transport = True
 
-    def mass_budget(self, lambda_name, greater_than=False, integrate=True, along_section=False, bins=None, default_bins=None):
-        """
-        Lazily evaluates the mass budget
+        self.full_recipe = recipe
+        self.padding = {ax: self.grid.axes[ax].padding for ax in self.grid.axes.keys()}
+
+        # Normalize the region against the (deep-copied) grid we compute on.
+        self.region = normalize_region(region, self.grid)
+        if assert_zero_transport:
+            self.region.assert_zero_transport = True
+        self.assert_zero_transport = self.region.assert_zero_transport
+
+        _warn_unlabelled_area(self.grid)
+
+    def mass_budget(
+        self,
+        lambda_name,
+        greater_than=False,
+        integrate=True,
+        along_section=False,
+        bins=None,
+        utr=None,
+        vtr=None,
+        mass_source_var=None,
+    ):
+        """Lazily evaluate the full water-mass budget as a function of ``lambda``.
 
         Parameters
         ----------
         lambda_name : str
-            Specifies lambda (e.g., 'heat', 'salt', 'sigma0', etc.). Use `lambdas()` for a list of available lambdas.
+            The tracer defining the water mass (e.g. "sigma2", "heat", "salt").
         greater_than : bool (default: False)
-            Whether the budget should be for a water mass with tracer values "greater than" the threshold, or
-            not ("less than" the threshold).
+            Budget for waters with tracer values *greater than* the threshold.
         integrate : bool (default: True)
-            Whether to integrate the in the ("X", "Y") dimensions
+            Horizontally integrate the terms over the region.
         along_section : bool (default: False)
-            Whether to include information about the along-section structure of convergent transports (with `sectionate`)
-        bins : None or array (default: None)
-            If None: assume lambda bins are already included in the dataset
-            If array: must be a 1D np.ndarray of bin edges
-        default_bins : deprecated
-            Deprecated parameter. Use `bins` instead.
-            If True: call `add_default_gridcoords` to generate bins
-            If False: corresponds to bins=None
-            If list: corresponds to ``bins=np.arange(*default_bins)``
+            Compute the convergent transport along the region boundary with
+            ``sectionate`` (required for multi-tile grids; preserves the
+            along-boundary streamfunction structure). Requires ``integrate=True``.
+        bins : None, array, or "default" (default: None)
+            If None: assume the lambda bins are already in the dataset.
+            If an array: a 1D array of bin edges.
+            If "default": a finely-spaced default grid for ``lambda_name``.
+        utr, vtr : str, optional
+            Names of the (zonal, meridional) face mass-transport variables in
+            ``grid._ds``. By default they are resolved from the recipe, which must
+            then use the MOM6 convention's ``zonal_convergence`` /
+            ``meridional_convergence`` term names; pass them explicitly otherwise.
+        mass_source_var : str, optional
+            Name of the surface mass-flux variable. By default it is resolved from
+            the recipe's ``("mass", "rhs", "surface_exchange_flux")`` term.
 
         Returns
         -------
         xr.Dataset
-            Contains all terms in the full water mass transformation budget
+            All terms in the closed water-mass transformation budget (``self.wmt``).
         """
-        import warnings
-
-        lambda_var = self.get_lambda_var(lambda_name)
-        target_coords = {"center": f"{lambda_var}_l_target", "outer": f"{lambda_var}_i_target"}
-        
-        if default_bins is not None:
-            warnings.warn(
-                "`default_bins` is deprecated and will be removed in a future version. "
-                "Use `bins` instead. "
-                "Note: The behavior has changed - `bins=None` is now the default, "
-                "and you should pass an array to `bins` to specify the edges of custom bins.",
-                DeprecationWarning,
-                stacklevel=2
-            )
-            
-            # Handle old True/False behavior
-            if default_bins == True:
-                self.add_default_gridcoords(lambda_name)
-            elif default_bins == False:
-                bins = None
-            elif len(default_bins) == 3 and all(isinstance(x, (int, float, np.integer, np.floating)) for x in default_bins):
-                bins = np.arange(*default_bins)
-                self.add_bins_gridcoords(lambda_name,bins)
-            else:
-                raise TypeError(f"Boolean or list of 3 numbers expected, got {type(default_bins).__name__}")
-        elif isinstance(bins, np.ndarray):
-            self.add_bins_gridcoords(lambda_name, bins)
-        elif isinstance(bins, xr.DataArray):
-            self.add_bins_gridcoords(lambda_name, bins.values)
-        elif bins is None:
-            pass
-        else:
-            raise TypeError(f"None or array expected, got {type(bins).__name__}")
-
-        lambda_var = self.get_lambda_var(lambda_name)
-        target_coords = {"center": f"{lambda_var}_l_target", "outer": f"{lambda_var}_i_target"}
-        
-        avail_target_coords = [c in self.grid._ds for c in target_coords.values()]
-        avail_lambda_coords = [
-            c.replace("_target", "") in self.grid._ds
-            for c in target_coords.values()
-        ]
-        if "Z_target" not in self.grid.axes:
-            if all(avail_lambda_coords):
-                if not all(avail_target_coords):
-                    self.grid._ds = self.grid._ds.assign_coords({
-                        target_coords["center"]: xr.DataArray(
-                            self.grid._ds[target_coords["center"].replace("_target", "")].values,
-                            dims=(target_coords["center"],)
-                        ),
-                        target_coords["outer"]: xr.DataArray(
-                            self.grid._ds[target_coords["outer"].replace("_target", "")].values,
-                            dims=(target_coords["outer"],)
-                        )
-                    })
-                self.grid = add_gridcoords(
-                    self.grid,
-                    {"Z_target": target_coords},
-                    {"Z_target": "extend"}
-                )
-            else: # `elif not all(avail_lambda_coords):`
-                raise ValueError(
-                    f"""To specify target grid, either pass a 1D array to `bins` or
-                    include {target_coords["center"]} and {target_coords["outer"]}
-                    in `WaterMassBudget.grid._ds`.""")
-                    
-        self.target_coords = target_coords
-        self.ax_bounds = "Z" if "Z_bounds" not in self.grid.axes else "Z_bounds"
-        self.prebinned = all([
-            (c in self.grid.axes[self.ax_bounds].coords.values())
-            for c in [f"{lambda_var}_l", f"{lambda_var}_i"]
-        ])
-        
-        self.wmt = self.transformations(lambda_name, integrate=integrate, greater_than=greater_than)
-        self.mass_bounds(lambda_name, integrate=integrate, greater_than=greater_than)
-        self.convergent_transport(lambda_name, integrate=integrate, greater_than=greater_than, along_section=along_section)
-        mass_tendency(self.wmt)
-        close_budget(self.wmt)
-        return self.wmt
-        
-    def transformations(self, lambda_name, greater_than=False, integrate=True):
-        """
-        Lazily evaluates the water mass transformation terms in the budget
-
-        Parameters
-        ----------
-        lambda_name : str
-            Specifies lambda (e.g., 'heat', 'salt', 'sigma0', etc.). Use `lambdas()` for a list of available lambdas.
-        greater_than : bool (default: False)
-            Whether the budget should be for a water mass with tracer values "greater than" the threshold, or
-            not ("less than" the threshold).
-        integrate : bool (default: True)
-            Whether to integrate transformation rates in the ("X", "Y") dimensions
-
-        Returns
-        -------
-        xr.Dataset
-            Contains the transformation terms in the full water mass transformation budget
-        """
-        kwargs = {
-            "bins": self.grid._ds[self.target_coords["outer"]],
-            "mask": self.region.mask,
-            "group_processes": True,
-            "sum_components": True
-        }
-        if integrate:
-            wmt = self.integrate_transformations(lambda_name, **kwargs)
-        else:
-            wmt = self.map_transformations(lambda_name, **kwargs)
-            
-        wmt = wmt.assign_coords({
-            self.target_coords["center"]: self.grid._ds[self.target_coords["center"]],
-            self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]],
-        })
-        
-        # Because the unit vector normal to isosurface switches directions,
-        # we need to flip water mass transformation terms.
-        # Alternatively, I think we could have just switched the ordering
-        # of the bins so that \Delta \lambda flips.
-        if greater_than:
-            for v in wmt.data_vars:
-                wmt[v] *= -1
-                
-        # Add up all terms that contribute to boundary-forced transformations
-        boundary_flux_terms = [
-            'surface_exchange_flux',
-            'surface_ocean_flux_advective_negative_rhs',
-            'bottom_flux',
-            'frazil_ice'
-        ]
-        # If decompose is not [], we need to sum up all contributing terms!
-        ignore_suffixes = [lambda_name]
-        if "sigma" in lambda_name:
-            ignore_suffixes += ["heat", "salt"]
-        if any([bflux in term for bflux in boundary_flux_terms for term in wmt]):
-            wmt['boundary_fluxes'] = sum([
-                sum([
-                    wmt[term] for term in wmt
-                    if (bflux in term) and not any(s in term for s in ignore_suffixes)
-                ])
-                for bflux in boundary_flux_terms
-            ])
-        
-        return wmt
-    
-    def _vertical_transform(self, da, target_data):
-        return (
-            self.grid.transform(
-                da.fillna(0.),
-                "Z",
-                target = self.grid._ds[self.target_coords["outer"]],
-                target_data = target_data,
-                method="conservative"
-            )
-            .rename({self.target_coords["outer"]: self.target_coords["center"]})
-            .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
-            .chunk({self.grid.axes['Z_target'].coords['center']: -1})
-        )
-    
-    def _vertical_cumsum(self, da, reverse=False):
-        if reverse:
-            ds_tmp = self.grid._ds.sel({
-                self.target_coords["outer"]:  slice(None, None, -1),
-                self.target_coords["center"]: slice(None, None, -1)
-            })
-        else:
-            ds_tmp = self.grid._ds
-
-        lam_grid = Grid(
-            ds_tmp,
-            coords={'lam': self.target_coords},
-            boundary={'lam': 'extend'},
-            autoparse_metadata=False
-        )
-
-        da_cumsum = lam_grid.cumsum(
-            ds_tmp[da.name], "lam", boundary="fill", fill_value=0.
-        ).chunk({self.target_coords["outer"]: -1})
-
-        if reverse:
-            da_cumsum = da_cumsum.isel({
-                self.target_coords["outer"]:  slice(None, None, -1),
-            })
-        
-        return da_cumsum.assign_coords(
-            {self.target_coords["outer"]: self.grid._ds[self.target_coords["outer"]]}
-        )
-        
-    def convergent_transport(self, lambda_name, greater_than=False, integrate=True, along_section=False):
-        """
-        Lazily evaluates the convergent transport (diascalar overturning) term in the water mass budget
-
-        Parameters
-        ----------
-        lambda_name : str
-            Specifies lambda (e.g., 'heat', 'salt', 'sigma0', etc.). Use `lambdas()` for a list of available lambdas.
-        greater_than : bool (default: False)
-            Whether the budget should be for a water mass with tracer values "greater than" the threshold, or
-            not ("less than" the threshold).
-        integrate : bool (default: True)
-            Whether to integrate the in the ("X", "Y") dimensions
-        along_section : bool (default: False)
-            Whether to include information about the along-section structure of convergent transports (with `sectionate`)
-
-        Returns
-        -------
-        xr.DataArray
-            The convergent transport (diascalar overturning) term in the full water mass transformation budget
-        """
-        lambda_var = self.get_lambda_var(lambda_name)
-        kwargs = {
-            "layer":     self.grid.axes["Z"].coords['center'],
-            "interface": self.grid.axes["Z"].coords['outer'],
-            "geometry":  "spherical"
-        }
-        if not(integrate) and along_section:
+        if along_section and not integrate:
             raise ValueError("Cannot have both `integrate=False` and `along_section=True`.")
-            
-        if not self.assert_zero_transport:
-            lateral_transports = self.full_xbudget_dict['mass']['rhs']['sum']['advection']['sum']['lateral']
-            if "sum" in lateral_transports:
-                kwargs = {**kwargs, **{
-                        f"{di_shorthand}tr":
-                        lateral_transports['sum'][f'{di}_convergence']['product'][f'{di}_divergence']['difference'][f'{di}_mass_transport']
-                        for (di, di_shorthand) in zip(["zonal", "meridional"], ["u", "v"])
-                    }}
-                surface_integral_condition = np.all(
-                    [kwargs[f"{di_shorthand}tr"] in self.grid._ds
-                     for di_shorthand in ["u", "v"]]
-                )
-                if not surface_integral_condition:
-                    raise ValueError("Lateral transports are not available in `ds`!")
-                    
-                if along_section: # compute normal transports using sectionate
-                    self.grid._ds['convergent_mass_transport_original'] = sectionate.convergent_transport(
-                        self.grid,
-                        self.region.i_c,
-                        self.region.j_c,
-                        positive_in = self.region.mask,
-                        **kwargs
-                    ).rename({"lat":"lat_sect", "lon":"lon_sect"})['conv_mass_transport']
-    
-                    if self.prebinned:
-                        target_data = self.grid._ds[f'{lambda_var}_i']
-                    else:
-                        self.grid._ds[f'{lambda_var}_sect'] = sectionate.extract_tracer(
-                            lambda_var,
-                            self.grid,
-                            self.region.i_c,
-                            self.region.j_c,
-                        )
-            
-                        self.grid._ds[f'{lambda_var}_i_sect'] = (
-                            self.grid.interp(self.grid._ds[f'{lambda_var}_sect'], "Z", boundary="extend")
-                            .chunk({self.grid.axes['Z'].coords['outer']: -1})
-                            .rename(f'{lambda_var}_i_sect')
-                        )
-                        target_data = self.grid._ds[f'{lambda_var}_i_sect']
 
-                    self.grid._ds['convergent_mass_transport_layer'] = self._vertical_transform(
-                        self.grid._ds['convergent_mass_transport_original'],
-                        target_data,
-                    )
-
-                elif not(along_section): # compute normal transports for each grid cell then sum
-                    if self.prebinned:
-                        lam_itpXZ = self.grid._ds[f'{lambda_var}_i']
-                        lam_itpYZ = self.grid._ds[f'{lambda_var}_i']
-                    else:
-                        lam_itpXZ = self.grid.interp(
-                            self.grid.interp(self.grid._ds[lambda_var], "X"),
-                            "Z",
-                            boundary="extend"
-                        ).chunk({self.grid.axes['Z'].coords['outer']: -1})
-                        lam_itpYZ = self.grid.interp(
-                            self.grid.interp(self.grid._ds[lambda_var], "Y"),
-                            "Z",
-                            boundary="extend"
-                        ).chunk({self.grid.axes['Z'].coords['outer']: -1})
-
-                    divergence_X = self.grid.diff(
-                        self._vertical_transform(
-                            self.grid._ds[kwargs['utr']].chunk({self.grid.axes['Z'].coords['center']: -1}),
-                            lam_itpXZ,
-                        ).fillna(0.),
-                        "X"
-                    )
-                    divergence_Y = self.grid.diff(
-                        self._vertical_transform(
-                            self.grid._ds[kwargs['vtr']].chunk({self.grid.axes['Z'].coords['center']: -1}),
-                            lam_itpYZ,
-                        ).fillna(0.),
-                        "Y"
-                    )
-                    
-                    self.grid._ds['convergent_mass_transport_layer'] = -(
-                        divergence_X + divergence_Y
-                    ) * self.region.mask
-            
-            suffix = 'greater_than' if greater_than else 'less_than'
-            self.grid._ds[f'convergent_mass_transport_{suffix}'] = self._vertical_cumsum(
-                self.grid._ds['convergent_mass_transport_layer'],
-                reverse = greater_than
-            )
-
-        # Compute mass source term
-        if self.prebinned:
-            target_data = self.grid._ds[f'{lambda_var}_i']
-        else:
-            target_data = (
-                self.grid.interp(self.grid._ds[f"{lambda_var}"], "Z", boundary="extend")
-                .chunk({self.grid.axes['Z'].coords['outer']: -1})
-                .rename(f"{lambda_var}_i")
-            )
-        
-        mass_flux_varname = "mass_rhs_sum_surface_exchange_flux"
-        if mass_flux_varname in self.grid._ds:
-            self.grid._ds['mass_source_density'] = self._vertical_transform(
-                self.grid._ds[mass_flux_varname],
-                target_data = target_data,
-            ) * self.region.mask
-        
-            suffix = 'greater_than' if greater_than else 'less_than'
-            self.grid._ds[f'mass_source_density_{suffix}'] = self._vertical_cumsum(
-                self.grid._ds.mass_source_density,
-                reverse = greater_than
-            )
-    
-            if integrate:
-                self.grid._ds[f'mass_source_{suffix}'] = (self.grid._ds[f'mass_source_density_{suffix}']).sum([
-                    self.grid.axes['X'].coords['center'],
-                    self.grid.axes['Y'].coords['center']
-                ])
-            else:
-                self.grid._ds[f'mass_source_{suffix}'] = self.grid._ds[f'mass_source_density_{suffix}']
-        
-        # Compute layer mass
-        self.grid._ds['mass_density'] = self._vertical_transform(
-            self.rho_ref*self.grid._ds[self.h_name],
-            target_data = target_data,
-        ) * self.region.mask
-        
-        self.wmt['layer_mass'] = (
-            self.grid._ds['mass_density'] *
-            self.grid.get_metric(self.grid._ds['mass_density'], ("X", "Y"))
-        )
-        if integrate:
-            self.wmt['layer_mass'] = self.wmt['layer_mass'].sum([
-                self.grid.axes['X'].coords['center'],
-                self.grid.axes['Y'].coords['center']
-            ])
-        
-        # interpolate terms onto tracer levels
-        lam_grid = Grid(
-            self.grid._ds,
-            coords={'lam': self.target_coords},
-            boundary={'lam': 'extend'},
-            autoparse_metadata=False
-        )
-
-        if mass_flux_varname in self.grid._ds:
-            self.wmt['mass_source'] = lam_grid.interp(
-                self.grid._ds[f'mass_source_{suffix}'],
-                "lam",
-                boundary="extend"
-            ).assign_coords(
-                {self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]}
-            )
-
-        if not self.assert_zero_transport:
-            convergent_transport = lam_grid.interp(
-                self.grid._ds[f'convergent_mass_transport_{suffix}'],
-                "lam",
-                boundary="extend"
-            )
-            if integrate:
-                if "sect" in convergent_transport.dims:
-                    self.grid._ds['convergent_mass_transport_along'] = convergent_transport
-                    self.wmt['convergent_mass_transport'] = convergent_transport.sum("sect")
-                else:
-                    area_dims = list(self.grid.get_metric(convergent_transport, ("X", "Y")).dims)
-                    self.wmt['convergent_mass_transport'] = convergent_transport.sum(area_dims)
-            else:
-                self.wmt['convergent_mass_transport'] = convergent_transport
-            
-            self.wmt = self.wmt.assign_coords(
-                    {self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]}
-                )
-            
-        else:
-            self.wmt['convergent_mass_transport'] = 0.
-        
-        return self.wmt.convergent_mass_transport
-        
-    
-    def mass_bounds(self, lambda_name, greater_than=False, integrate=True):
-        """
-        Lazily evaluates snapshots (time "bounds") of the water mass' mass
-
-        Parameters
-        ----------
-        lambda_name : str
-            Specifies lambda (e.g., 'heat', 'salt', 'sigma0', etc.). Use `lambdas()` for a list of available lambdas.
-        greater_than : bool (default: False)
-            Whether the budget should be for a water mass with tracer values "greater than" the threshold, or
-            not ("less than" the threshold).
-        integrate : bool (default: True)
-            Whether to integrate the in the ("X", "Y") dimensions
-            
-        Returns
-        -------
-        None, but adds "mass_bounds" to the xr.Dataset `self.wmt`
-        """
         lambda_var = self.get_lambda_var(lambda_name)
-        if "time_bounds" in self.grid._ds.dims:
-            if self.prebinned:
-                target_data = self.grid._ds[f"{lambda_var}_i"]
-            else:
-                self.grid._ds[f"{lambda_var}_i_bounds"] = (
-                    self.grid.interp(self.grid._ds[f"{lambda_var}_bounds"], self.ax_bounds, boundary="extend")
-                    .chunk({self.grid.axes[self.ax_bounds].coords['outer']: -1})
-                    .rename(f"{lambda_var}_i_bounds")
-                )
-                target_data = self.grid._ds[f"{lambda_var}_i_bounds"]
-                
-            self.grid._ds['mass_density_bounds'] = (
-                self.grid.transform(
-                    self.rho_ref*self.grid._ds[f"{self.h_name}_bounds"].fillna(0.),
-                    self.ax_bounds,
-                    target = self.grid._ds[self.target_coords["outer"]],
-                    target_data = target_data,
-                    method="conservative"
-                )
-                .rename({self.target_coords["outer"]: self.target_coords["center"]})
-                .assign_coords({self.target_coords["center"]: self.grid._ds[self.target_coords["center"]]})
-            ) * self.region.mask
-
-            suffix = 'greater_than' if greater_than else 'less_than'
-            self.grid._ds[f'mass_density_bounds_{suffix}'] = self._vertical_cumsum(
-                self.grid._ds.mass_density_bounds,
-                reverse = greater_than
-            )
-
-            self.grid._ds[f'mass_bounds_{suffix}'] = (
-                self.grid._ds[f'mass_density_bounds_{suffix}'] *
-                self.grid.get_metric(self.grid._ds[f"{lambda_var}_bounds"], ("X", "Y"))
-            )
-            
-            lam_grid = Grid(
-                self.grid._ds,
-                coords={'lam': self.target_coords},
-                boundary={'lam': 'extend'},
-                autoparse_metadata=False
-            )
-            if integrate:
-                self.wmt['mass_bounds'] = lam_grid.interp(
-                    self.grid._ds[f'mass_bounds_{suffix}'],
-                    "lam"
-                ).sum([
-                    self.grid.axes['X'].coords['center'],
-                    self.grid.axes['Y'].coords['center']
-                ])
-            else:
-                self.wmt['mass_bounds'] = lam_grid.interp(
-                    self.grid._ds[f'mass_bounds_{suffix}'],
-                    "lam"
-                )
-            
-            self.wmt['mass_bounds'] = self.wmt['mass_bounds'].assign_coords(
-                {self.target_coords["center"]: self.grid._ds[self.target_coords["center"]].values}
-            )
-
-        return
-        
-    def add_bins_gridcoords(self, lambda_name, bin_edges):
-        lambda_var = self.get_lambda_var(lambda_name)
-        self.grid._ds = self.grid._ds.assign_coords({
-            f"{lambda_var}_l_target" : 0.5*(bin_edges[1:]+bin_edges[:-1]),
-            f"{lambda_var}_i_target" : bin_edges,
-        })
-        self.grid = add_gridcoords(
-            self.grid,
-            {"Z_target": {"outer": f"{lambda_var}_i_target", "center": f"{lambda_var}_l_target"}},
-            {"Z_target": "extend"}
+        # Ensure the lambda field itself is available (e.g. a density derived from
+        # T/S), even if no transformation process references it.
+        if lambda_var not in self.grid._ds:
+            self.get_density(lambda_var)
+        self.grid, self.target_coords = resolve_target_coords(
+            self.grid, lambda_var, lambda_name, bins=bins
+        )
+        self.ax_bounds = "Z" if "Z_bounds" not in self.grid.axes else "Z_bounds"
+        self.prebinned = all(
+            c in self.grid.axes[self.ax_bounds].coords.values()
+            for c in [f"{lambda_var}_l", f"{lambda_var}_i"]
         )
 
-    def add_default_gridcoords(self, lambda_name):
-        if "sigma" in lambda_name:
-            bin_edges = np.arange(0., 50. + 0.05, 0.05)
-        elif lambda_name=="heat":
-            bin_edges = np.arange(-4.0, 40. + 0.05, 0.05)
-        elif lambda_name=="salt":
-            bin_edges = np.arange(-1.0, 40. + 0.05, 0.05)
-        self.add_bins_gridcoords(lambda_name, bin_edges)
-        
-def mass_tendency(ds):
-    """
-    Computes the time-mean mass tendency by finite-differencing water mass snapshots
-    """
-    if not all([v in ds for v in ["time_bounds", "mass_bounds"]]):
-        raise ValueError("Needs both `time_bounds` and `mass_bounds` variables")
-    dt = ds.time_bounds.diff('time_bounds')
-    # Convert timedelta to float (seconds)
-    if str(dt.dtype).startswith('timedelta64'):
-        dt = dt / np.timedelta64(1, 's')
-    elif dt.dtype == "<m8[ns]":
-        dt = dt.astype('float')*1.e-9
-    if ds.time_bounds.size == ds.time.size:
-        time_target = ds.time[1:]
-        print("Warning: first value of `mass_tendency` may be NaN!")
-    elif ds.time_bounds.size == (ds.time.size + 1):
-        time_target = ds.time
-    else:
-        raise ValueError("time_bounds inconsistent with time")
-    ds['mass_tendency'] = (
-        ds.mass_bounds.diff('time_bounds') / dt
-    ).rename({"time_bounds":"time"}).assign_coords({'time': time_target})
-    ds['dt'] = dt.rename({"time_bounds":"time"}).assign_coords({'time':time_target})
-        
-def close_budget(ds):
-    """
-    Close the full water mass transformation budget by identifying the residual as spurious numerical mixing.
-    """
-    realized_transformation_terms = [
-        "mass_tendency",
-        "mass_source",
-        "convergent_mass_transport",
-    ]
-    if all([term in ds for term in realized_transformation_terms]):
-        ds["realized_transformation"] = (
-            ds.mass_tendency -
-            ds.mass_source -
-            ds.convergent_mass_transport
+        term_kwargs = dict(
+            greater_than=greater_than, integrate=integrate, prebinned=self.prebinned
         )
-        # By construction, kinematic_transformation == material_transformation,
-        # so use whichever available
-        if "material_transformation" in ds:
-            ds["spurious_numerical_mixing"] = (
-                ds.realized_transformation -
-                ds.material_transformation
-            )
-        elif "kinematic_transformation" in ds:
-            ds["spurious_numerical_mixing"] = (
-                ds.realized_transformation -
-                ds.kinematic_transformation
-            )
 
-        if "advection" in ds:
-            if "surface_ocean_flux_advective_negative_lhs" in ds:
-                ds["advection_plus_BC"] = (
-                    ds.advection +
-                    ds.surface_ocean_flux_advective_negative_lhs
-                )
-            else:
-                ds["advection_plus_BC"] = ds.advection
+        # Transformation rates (from xwmt), grouped and signed.
+        self.wmt = compute_transformations(
+            self,
+            lambda_name,
+            self.target_coords,
+            self.region.mask,
+            greater_than=greater_than,
+            integrate=integrate,
+        )
 
-        if ("spurious_numerical_mixing" in ds) and ("advection_plus_BC" in ds):
-            ds["diabatic_advection"] = (
-                ds.advection_plus_BC +
-                ds.spurious_numerical_mixing
-            )
-    
-    return
+        # Storage snapshots -> mass tendency.
+        mass_bounds = mass_bounds_term(
+            self, lambda_name, self.target_coords, self.region, **term_kwargs
+        )
+        if mass_bounds is not None:
+            self.wmt["mass_bounds"] = mass_bounds
+
+        # Convergent transport across the region boundary.
+        self.wmt["convergent_mass_transport"] = convergent_transport_term(
+            self,
+            lambda_name,
+            self.target_coords,
+            self.region,
+            along_section=along_section,
+            utr=utr,
+            vtr=vtr,
+            **term_kwargs,
+        )
+
+        # Surface mass source.
+        mass_source = mass_source_term(
+            self,
+            lambda_name,
+            self.target_coords,
+            self.region,
+            mass_source_var=mass_source_var,
+            **term_kwargs,
+        )
+        if mass_source is not None:
+            self.wmt["mass_source"] = mass_source
+
+        # Layer mass.
+        self.wmt["layer_mass"] = layer_mass_term(
+            self,
+            lambda_name,
+            self.target_coords,
+            self.region,
+            integrate=integrate,
+            prebinned=self.prebinned,
+        )
+
+        if "mass_bounds" in self.wmt:
+            mass_tendency(self.wmt)
+
+        # Audit before closing: whether the residual may be *called* spurious
+        # numerical mixing depends on nothing else being unaccounted for.
+        self.completeness = budget_completeness(self, self.wmt, lambda_name)
+        close_budget(
+            self.wmt,
+            report=self.completeness,
+            lambda_name=lambda_name,
+            lambda_var=lambda_var,
+        )
+        return self.wmt

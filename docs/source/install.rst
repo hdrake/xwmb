@@ -1,7 +1,7 @@
 Installation
 ============
 
-**xwmt** Python package for water mass transformation analysis that leverages xarray functionality
+**xwmb** Python package for water mass budget analysis that leverages xarray functionality
 
 Install from conda-forge:
 

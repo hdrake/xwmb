@@ -20,6 +20,11 @@ def download_MOM6_example_data(file_name):
 def load_MOM6_example_grid(file_name):
     destination_path = download_MOM6_example_data(file_name)
     ds = xr.open_dataset(destination_path, chunks=-1).fillna(0.)
+    # The published file ships `areacello` unlabelled. xbudget multiplies the cell
+    # area into every term it materializes and infers each term's units from its
+    # operands, so without this the whole budget -- and everything xwmt and xwmb
+    # derive from it -- comes back with no units at all.
+    ds['areacello'].attrs.setdefault('units', 'm2')
     return construct_grid(ds)
 
 def load_MOM6_coarsened_diagnostics():
@@ -32,8 +37,8 @@ def construct_grid(ds):
         'Y': {'center': 'yh', 'outer': 'yq'},
         'Z': {'center': 'sigma2_l', 'outer': 'sigma2_i'},
     }
-    boundary = {'X':'periodic', 'Y':'extend', 'Z':'extend'}
+    padding = {'X':'periodic', 'Y':'extend', 'Z':'extend'}
 
     metrics = {('X','Y'):'areacello'}
-    grid = xgcm.Grid(ds, coords=coords, metrics=metrics, boundary=boundary, autoparse_metadata=False)
+    grid = xgcm.Grid(ds, coords=coords, metrics=metrics, padding=padding, autoparse_metadata=False)
     return grid

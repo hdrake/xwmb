@@ -7,3 +7,4 @@ Example notebooks demonstrating common xwmb workflows.
    :maxdepth: 1
 
    Closed water mass budget in MOM6 <examples/MOM6_water_mass_budgets>
+   Antarctic Bottom Water in ECCOv4r4 (multi-tile LLC90) <examples/ECCO_AABW_watermass_budget>

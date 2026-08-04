@@ -4,3 +4,11 @@ __pycache__
 
 # Version file generated from the git tag by hatch-vcs at build time.
 xwmb/_version.py
+
+# Example datasets are downloaded on demand (Zenodo), not tracked.
+/data/*.nc
+/data/ecco/
+
+# Sphinx build output (including scratch builds of other builders).
+docs/_build/
+docs/_b_*/

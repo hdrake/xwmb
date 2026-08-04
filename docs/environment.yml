@@ -16,3 +16,13 @@ dependencies:
   - matplotlib
   - sphinx-book-theme
   - pip
+  # See the note in ci/environment.yml: conda-forge builds of the topology-aware
+  # stack's compiled dependencies, so pip does not have to.
+  - cf-units
+  - geopandas
+  - pyproj
+  - shapely
+  - regionmask
+  - gsw
+  - numba
+  - dask
