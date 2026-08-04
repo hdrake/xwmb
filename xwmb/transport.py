@@ -246,10 +246,13 @@ def _convergence_along_section(
     wmb, region, lambda_var, target_coords, utr, vtr, prebinned
 ):
     grid = wmb.grid
-    zc = grid.axes["Z"].coords["center"]
-    zi = grid.axes["Z"].coords["outer"]
     # sectionate needs a horizontal-only grid (a Z axis breaks its corner padding);
     # `_ds` is shared, so transports/tracers still resolve against the full dataset.
+    # It labels the transport vertically without being told how: the layer coordinate
+    # is a dimension of `utr`/`vtr` and comes along with them, whatever grid it is
+    # handed. (The matching interface coordinate would come from a vertical axis, which
+    # `hgrid` deliberately does not have -- but it never survived this call site anyway,
+    # since it sits on its own dimension and is dropped by the extraction below.)
     hgrid = horizontal_grid(grid)
 
     convs, tracers = [], []
@@ -261,8 +264,6 @@ def _convergence_along_section(
             f_c=loop.f_c,
             utr=utr,
             vtr=vtr,
-            layer=zc,
-            interface=zi,
             geometry="spherical",
             positive_in=region.mask,
         )
