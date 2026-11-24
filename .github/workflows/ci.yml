@@ -34,13 +34,16 @@ jobs:
           fetch-depth: 0
 
       - name: Conda setup
-        uses: conda-incubator/setup-miniconda@v2
+        uses: conda-incubator/setup-miniconda@v4
         with:
+          # Install conda explicitly: ubuntu-latest (26.04 and later) no longer
+          # bundles Miniconda.
+          miniforge-version: latest
           channels: conda-forge
           mamba-version: '*'
           python-version: ${{ matrix.python-version }}
           activate-environment: test_env_xwmb
-          auto-activate-base: false
+          auto-activate: false
 
       - name: Set up conda environment
         run: |
